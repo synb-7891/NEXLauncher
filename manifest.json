@@ -1,6 +1,6 @@
 {
   "version": "0.4.0",
   "url": "https://github.com/synb-7891/NEXLauncher/releases/download/v0.4.0/NEXLauncher-0.4.0-full.zip",
-  "notes": "NEX 0.4.0：账号管理全面升级——多账号切换（互不覆盖）、外置登录（LittleSkin 等 Yggdrasil 服务器）、皮肤选择器与 3D 皮肤预览；已移除在线下载游戏版本功能，改为导入本机已有版本游玩；修复背景图透出桌面、资源图标/详情图片加载失败；联机隧道改良（授权链接自动复制）。完整版解压即用，无需安装 .NET 运行时。",
+  "notes": "NEX 0.4.0：修复 playit.gg 授权页报错（内置授权窗口）、外置登录、正版头像/皮肤、启动 Already installing；新增版本设置、模组管理、Java 管理、基岩版、百宝箱、正版披风、9 套官方默认皮肤与 3D 皮肤预览增强。完整版解压即用，无需安装 .NET 运行时。",
   "publishedAt": "2026-11-01"
 }
