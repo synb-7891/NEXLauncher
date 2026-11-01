@@ -1,6 +1,0 @@
-{
-  "version": "0.3.9",
-  "url": "https://cdn.jsdelivr.net/gh/synb-7891/NEXLauncher@89901409bf5032576b528751bea8d31346129571/NEXLauncher-0.3.9.zip",
-  "notes": "修正版本号不一致问题（程序内版本号未同步，可能导致重复提示更新）；关于页补充 Mojang 使用准则要求的官方免责声明原文 \"NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.\"",
-  "publishedAt": "2026-11-01"
-}
