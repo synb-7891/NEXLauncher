@@ -1,6 +1,6 @@
 {
-  "version": "0.3.6",
-  "url": "https://cdn.jsdelivr.net/gh/synb-7891/NEXLauncher@c8451983b09fb32fcefde487722dd64e6d468d0a/NEXLauncher-0.3.6.zip",
-  "notes": "修复：安装模组加载器时 Fabric/Quilt 版本获取失败（The given key was not present）——解析字段路径错误；三个加载器现在都能正常显示最新版本和完整版本列表。修复：登录状态无法保存——微软登录静默刷新失败不再清空账号记录，并缓存会话作为后备，离线账号恢复更可靠。",
+  "version": "0.3.7",
+  "url": "https://cdn.jsdelivr.net/gh/synb-7891/NEXLauncher@fbf5089962a007771e1cf05e66577040fcf18c72/NEXLauncher-0.3.7.zip",
+  "notes": "修复联机公网地址一直出不来：隧道程序下载不完整（文件被截断）导致无法启动，现在下载带完整性校验、损坏自动重下，并新增国内加速镜像源；公网地址未就绪时的提示更明确（授权/等待/未启动分别引导）。",
   "publishedAt": "2026-11-01"
 }
