@@ -1,6 +1,6 @@
 {
-  "version": "0.3.7",
-  "url": "https://cdn.jsdelivr.net/gh/synb-7891/NEXLauncher@fbf5089962a007771e1cf05e66577040fcf18c72/NEXLauncher-0.3.7.zip",
-  "notes": "修复联机公网地址一直出不来：隧道程序下载不完整（文件被截断）导致无法启动，现在下载带完整性校验、损坏自动重下，并新增国内加速镜像源；公网地址未就绪时的提示更明确（授权/等待/未启动分别引导）。",
+  "version": "0.3.8",
+  "url": "https://cdn.jsdelivr.net/gh/synb-7891/NEXLauncher@d593abfbdc66d953f93c66d71efa09aace66f056/NEXLauncher-0.3.8.zip",
+  "notes": "新增：设置页「关于」卡片，展示软件版本、版权声明、许可协议摘要与第三方组件清单；程序集元数据加入版权信息；随包提供 LICENSE.txt 完整许可协议（保留所有权利，禁止修改/改名再发布/商业使用）。",
   "publishedAt": "2026-11-01"
 }
