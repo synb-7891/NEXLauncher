@@ -1,6 +1,6 @@
 {
   "version": "0.3.2",
-  "url": "https://cdn.jsdelivr.net/gh/synb-7891/NEXLauncher@main/NEXLauncher-0.3.2.zip",
-  "notes": "性能优化：移除全窗口模糊特效，窗口拖动/缩放/页面切换更流畅；修复模组图标显示尺寸。",
+  "url": "https://cdn.jsdelivr.net/gh/synb-7891/NEXLauncher@8586aa21dabf5e1ca694b7df034dc51c4267844e/NEXLauncher-0.3.2.zip",
+  "notes": "性能优化：移除全窗口模糊特效，窗口拖动/缩放/页面切换更流畅；修复模组图标显示尺寸；更新检查走 GitHub API 保证即时性。",
   "publishedAt": "2026-11-01"
 }
