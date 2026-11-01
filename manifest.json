@@ -1,6 +1,6 @@
 {
   "version": "0.4.0",
-  "url": "https://cdn.jsdelivr.net/gh/synb-7891/NEXLauncher@main/NEXLauncher-0.4.0.zip",
+  "url": "https://github.com/synb-7891/NEXLauncher/releases/download/v0.4.0/NEXLauncher-0.4.0-full.zip",
   "notes": "NEX 0.4.0：账号管理全面升级——多账号切换（互不覆盖）、外置登录（LittleSkin 等 Yggdrasil 服务器）、皮肤选择器；按合规要求移除在线下载游戏版本功能，改为导入本机已有版本游玩；修复背景图透出桌面、资源图标/图片加载失败；联机隧道改良（授权链接自动复制）。需要 .NET 8 桌面运行时。",
   "publishedAt": "2026-11-01"
 }
