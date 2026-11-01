@@ -1,6 +1,6 @@
 {
-  "version": "0.3.5",
-  "url": "https://cdn.jsdelivr.net/gh/synb-7891/NEXLauncher@0bc894109eafb564ca197da6cf257ad678793437/NEXLauncher-0.3.5.zip",
-  "notes": "皮肤页大升级：内置皮肤库 20 页 800+ 皮肤（Ely.by 皮肤站，支持分类筛选），点击即应用到微软正版或离线账号（离线皮肤通过 authlib-injector 本地皮肤服务器实现）；底部提供 NameMC / Skindex / Ely.by 直达链接。修复：左下角版本列表和加载器类型（原版/Forge/Fabric 等）启动即显示，无需进入版本页。",
+  "version": "0.3.6",
+  "url": "https://cdn.jsdelivr.net/gh/synb-7891/NEXLauncher@c8451983b09fb32fcefde487722dd64e6d468d0a/NEXLauncher-0.3.6.zip",
+  "notes": "修复：安装模组加载器时 Fabric/Quilt 版本获取失败（The given key was not present）——解析字段路径错误；三个加载器现在都能正常显示最新版本和完整版本列表。修复：登录状态无法保存——微软登录静默刷新失败不再清空账号记录，并缓存会话作为后备，离线账号恢复更可靠。",
   "publishedAt": "2026-11-01"
 }
