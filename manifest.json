@@ -1,6 +1,6 @@
 {
-  "version": "0.3.1",
-  "url": "https://cdn.jsdelivr.net/gh/synb-7891/NEXLauncher@main/NEXLauncher-0.3.1.zip",
-  "notes": "NEX 启动器 0.3.1：暗色下拉框、PCL2 风格加载器选择与模组下载页、Forge 支持、内置自动更新。",
+  "version": "0.3.2",
+  "url": "https://cdn.jsdelivr.net/gh/synb-7891/NEXLauncher@main/NEXLauncher-0.3.2.zip",
+  "notes": "性能优化：移除全窗口模糊特效，窗口拖动/缩放/页面切换更流畅；修复模组图标显示尺寸。",
   "publishedAt": "2026-11-01"
 }
