@@ -1,6 +1,6 @@
 {
-  "version": "0.3.4",
-  "url": "https://cdn.jsdelivr.net/gh/synb-7891/NEXLauncher@21d56881c0be95263924afd371717bde2869c372/NEXLauncher-0.3.4.zip",
-  "notes": "修复：模组下载页搜索卡片\"名称/来源\"\"版本/类型\"文字重叠（布局行未定义导致两组内容叠在同一行）。",
+  "version": "0.3.5",
+  "url": "https://cdn.jsdelivr.net/gh/synb-7891/NEXLauncher@0bc894109eafb564ca197da6cf257ad678793437/NEXLauncher-0.3.5.zip",
+  "notes": "皮肤页大升级：内置皮肤库 20 页 800+ 皮肤（Ely.by 皮肤站，支持分类筛选），点击即应用到微软正版或离线账号（离线皮肤通过 authlib-injector 本地皮肤服务器实现）；底部提供 NameMC / Skindex / Ely.by 直达链接。修复：左下角版本列表和加载器类型（原版/Forge/Fabric 等）启动即显示，无需进入版本页。",
   "publishedAt": "2026-11-01"
 }
