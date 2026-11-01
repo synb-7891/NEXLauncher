@@ -1,6 +1,6 @@
 {
-  "version": "0.3.3",
-  "url": "https://cdn.jsdelivr.net/gh/synb-7891/NEXLauncher@4ad8bfb80ded141b59e089a51f864c9e79a30b19/NEXLauncher-0.3.3.zip",
-  "notes": "新增：游戏版本页支持删除已安装版本（带确认弹窗和体积提示，防止误删）；筛选栏新增\"已安装\"标签；本地加载器版本（如 1.20.1-fabric）也会显示并可管理。",
+  "version": "0.3.4",
+  "url": "https://cdn.jsdelivr.net/gh/synb-7891/NEXLauncher@21d56881c0be95263924afd371717bde2869c372/NEXLauncher-0.3.4.zip",
+  "notes": "修复：模组下载页搜索卡片\"名称/来源\"\"版本/类型\"文字重叠（布局行未定义导致两组内容叠在同一行）。",
   "publishedAt": "2026-11-01"
 }
