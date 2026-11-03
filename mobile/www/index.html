@@ -622,7 +622,7 @@ body.is-mobile .tabbar{display:flex}
   <aside class="rail">
     <div class="logo">
       <div class="logo-mark">N</div>
-      <div><b>NEX Launcher</b><span>v0.4.1 · 完整版</span></div>
+      <div><b>NEX Launcher</b><span>v3.9.8 · 完整版</span></div>
     </div>
     <div class="nav-group">游戏</div>
     <div class="nav-item on" data-page="home">
@@ -698,7 +698,7 @@ body.is-mobile .tabbar{display:flex}
 
           <div class="widget w-news" data-id="news" data-order="4">
             <span class="drag-dot">✥</span>
-            <h3><span class="dot"></span>公告 · NEX 0.4.1</h3>
+            <h3><span class="dot"></span>公告 · NEX 3.9.8</h3>
             <div class="news-item"><span class="t">11-02</span>多账号切换升级，外置登录支持 LittleSkin 等 Yggdrasil 服务器</div>
             <div class="news-item"><span class="t">11-01</span>皮肤选择器上线，离线账号也能换皮肤</div>
             <div class="news-item"><span class="t">10-31</span>一键开服隧道改良，授权链接自动复制</div>
@@ -1137,6 +1137,7 @@ function nexGoNative(page){
 <script>
 /* ================= 主题（UiPalette 真实预设） ================= */
 const THEMES = {
+  "云白":  ["#F3F5F9","#FFFFFF","#FFFFFF","#EDF1F7","#DFE5EE","#4C9AFF","#1B2532","#46566B","#7C8BA1","#9AA7B9"],
   "熔光":  ["#020817","#060C18","#0B1220","#141E32","#1E293B","#F6A82A","#F8FAFC","#CBD5E1","#94A3B8","#A8B4C4"],
   "深蓝":  ["#030A15","#071120","#0C1626","#152238","#1E3050","#4C9AFF","#F1F5F9","#CBD5E1","#8FA3BE","#A6B7CC"],
   "暗夜黑":["#070809","#0D0F11","#14171A","#1E2226","#2A2F35","#4ECB73","#EFF2F4","#C8D0D6","#8A939B","#A2ABB3"],
@@ -1145,7 +1146,7 @@ const THEMES = {
   "暖橙":  ["#120C06","#1A130A","#221809","#302313","#3D2C17","#FFB340","#FAF3E6","#E3D3B8","#A3906F","#BBA98A"],
 };
 const KEYS = ["bg","header","surface","surface-alt","border","accent","text","text-dim","muted","muted-light"];
-let curTheme = localStorage.getItem("nex.ui.theme") || "深蓝";
+let curTheme = localStorage.getItem("nex.ui.theme") || "云白";
 let curMode  = localStorage.getItem("nex.ui.mode") || "light";   // 默认浅色（Verse 白底）
 function applyTheme(name){
   const t = THEMES[name]; if(!t) return;
@@ -1788,8 +1789,8 @@ if(NEX_APP){
       case "toast": toast(m.msg); break;
     }
   });
-  /* DOM 已就绪，通知宿主推送真实状态 */
-  setTimeout(()=>nexPost({cmd:"ready"}), 80);
+  /* 首帧真正绘制完成后才通知宿主显示窗口（杜绝黑屏/白屏闪现） */
+  requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(()=>nexPost({cmd:"ready"}), 120)));
   /* 宿主切走再切回时补一次刷新，保证版本/账号是最新的 */
   document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) nexPost({cmd:"refresh"}); });
 }

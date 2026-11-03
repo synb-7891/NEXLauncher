@@ -4,7 +4,7 @@
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         Title="NEX Launcher" Width="1180" Height="760" MinWidth="960" MinHeight="620"
         WindowStartupLocation="CenterScreen"
-        WindowStyle="None" AllowsTransparency="False" Background="#030A15"
+        WindowStyle="None" AllowsTransparency="False" Background="#F3F5F9"
         UseLayoutRounding="True" SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Display"
         TextOptions.TextRenderingMode="ClearType"
         Foreground="#E6EDF3">
