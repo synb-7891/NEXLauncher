@@ -1,31 +1,60 @@
 # NEX Launcher
 
-NEX is an original, lightweight Windows launcher shell for Minecraft. It targets Windows 10 and 11 with .NET 8 WPF. The current build is a UI foundation; it does not claim to implement official account authentication, downloading every historical game version, mod loaders, skin uploads, or public server hosting.
+NEX Launcher 是一款第三方 Minecraft 启动器（Windows 10/11，.NET 8 + WPF + WebView2），界面为自研的 Verse 风格自由布局：开始页面所有卡片可拖拽、可自定义背景，经典界面与新版界面共用同一套账号、版本与设置。
 
-## Run
+当前版本：**v3.9.8**
 
-Install the .NET 8 SDK on Windows, then run from this directory:
+## 下载
+
+| 版本 | 说明 |
+|---|---|
+| **完整版**（`NEXLauncher-3.9.8-full.zip`） | 自包含 .NET 运行时，解压双击 `NEXLauncher.exe` 即可运行，含《使用说明》 |
+| **公共版**（`NEXLauncher-3.9.8-public.zip`） | 功能与完整版一致，面向公共分发（不含使用说明文件） |
+
+下载后解压到任意目录运行，**无需另装 .NET**。系统需具备 WebView2 运行时（Windows 10/11 一般自带；缺失时会自动回退经典界面）。
+
+## 功能
+
+- **开始页面**：头像 / 启动游戏 / 公告 / 本周数据 / 快捷功能 / 我的资源 / 防护状态七张卡片，任意拖拽、居中吸附、位置自动保存；点头像直达账号页
+- **游戏版本**：扫描本机版本，支持 Fabric / Forge / Quilt 加载器，整合包导入与安装向导
+- **资源下载**：Modrinth 实时搜索（模组 / 整合包 / 资源包 / 光影包 / 数据包），加载器与游戏版本筛选、镜像加速、详情弹窗
+- **账号**：微软正版登录、离线账号、外置登录（authlib），多账号切换
+- **皮肤站**：内置官方皮肤库、本地皮肤上传与 3D 预览、LittleSkin / NameMC 入口
+- **百宝箱**：Java 运行环境管理、存档管理、崩溃报告、垃圾清理、内存优化、基岩版启动、披风管理、模组站点
+- **安全防护**：五道防线（下载防护 / 勒索蜜罐 / 行为监控 / 系统守护 / 游戏防护）、诱饵文件监控、威胁隔离区、事件日志
+- **个性化**：浅色「云白」默认主题 + 6 套深色主题任意切换、自定义背景图、遮罩浓度与模糊、窗口圆角
+
+## 本版更新（3.9.8）
+
+- 全新 WebView2 混合界面，经典界面功能零改动
+- 启动流程重构：界面首帧就绪后才淡入，消除旧界面闪现与黑屏
+- 修复后台状态刷新会强制跳回经典界面的问题
+- 新增浅色「云白」主题并设为默认，经典界面同步白底化
+- 资源下载页大改：Modrinth 实时数据、圆角卡片、多条件筛选
+- 跨端工程：Capacitor 安卓 / Photino 跨平台外壳 / PWA
+
+## 跨端
+
+| 端 | 状态 | 目录 |
+|---|---|---|
+| Windows | 完整可用 | 本仓库根目录（WPF + WebView2） |
+| 安卓 / iOS | PWA 可直接「添加到主屏幕」；Capacitor APK 工程就绪 | `mobile/` |
+| macOS / Linux | Photino 外壳已构建通过，服务层接入进行中 | `cross/NEXLauncher.Cross/` |
+
+界面层为单文件 HTML（`Assets/webshell/index.html`），三端共用同一份。
+
+## 从源码构建
 
 ```powershell
-dotnet run
+# 需要 .NET 8 SDK
+dotnet build
+dotnet publish -c Release -r win-x64 --self-contained true -o dist/NEXLauncher-win-x64
 ```
 
-To build a Windows executable:
+移动端与跨平台外壳的构建步骤见 `mobile/README-构建APK.md`、`cross/README-跨平台.md`。
 
-```powershell
-dotnet publish -c Release -r win-x64 --self-contained false
-```
+## 说明
 
-## Current functions
-
-- A centered NEX splash screen that transitions to the launcher after three seconds.
-- Chinese navigation for the dashboard, versions, mods and modpacks, resource packs, skins, multiplayer, quick server, and settings.
-- Local Minecraft folder access and a server launch action for a user-provided `server.jar` with Java installed.
-- Server address copy action for sharing an address in game.
-
-## Boundaries and next steps
-
-- Microsoft account sign-in and game launch must use the official authentication flow and a valid licensed account; they are not implemented in this shell.
-- Version, mod, modpack, resource-pack, and skin catalogs need trusted provider integrations, compatibility checks, and download/install flows.
-- Quick server starts a local `server.jar` only when the user has supplied it and accepted its EULA. Public access depends on the server host, firewall, router/NAT port forwarding, and ISP; a launcher cannot guarantee a public IP or successful reachability.
-- The SVG in `Assets/nex-mark.svg` is the original NEX mark. Packaging it as a native Windows `.ico` can be added to the release pipeline.
+- 微软账号登录与游戏启动使用官方认证流程，需要合法拥有的游戏账号
+- 本仓库不包含游戏本体、Java 运行时与任何第三方付费资源
+- 界面素材（皮肤贴图）来自 Mojang 公开的默认皮肤资源
