@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>NEXLauncher</AssemblyName>
+    <RootNamespace>NEXLauncher</RootNamespace>
+    <ApplicationIcon>Assets\nex-icon.ico</ApplicationIcon>
+    <AssemblyTitle>NEX Launcher</AssemblyTitle>
+    <Product>NEX Launcher</Product>
+    <Company>NEX Launcher</Company>
+    <Version>3.9.8</Version>
+    <FileVersion>3.9.8.0</FileVersion>
+    <Copyright>Copyright © 2026 NEX Launcher 版权所有，保留一切权利。</Copyright>
+    <NeutralLanguage>zh-CN</NeutralLanguage>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- probe/ 是本地测试与截图脚本目录，不参与编译 -->
+    <Compile Remove="probe\**\*.cs" />
+    <!-- cross/ mobile/ 是跨端独立工程，不参与主工程编译 -->
+    <Compile Remove="cross\**\*.cs;mobile\**\*.cs" />
+    <Content Remove="cross\**\**;mobile\**\**" />
+    <None Remove="cross\**\**;mobile\**\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Assets\nex-mark.svg" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\skins\*.png" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 新版 WebView2 界面（单文件 HTML，离线可用） -->
+    <Content Include="Assets\webshell\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="CmlLib.Core" Version="4.1.0" />
+    <PackageReference Include="CmlLib.Core.Auth.Microsoft" Version="3.4.0" />
+    <PackageReference Include="XboxAuthNet.Game.Msal" Version="0.2.0" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.1823.32" />
+  </ItemGroup>
+</Project>

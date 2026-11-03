@@ -1,0 +1,14 @@
+{
+  "appId": "com.nex.launcher",
+  "appName": "NEX Launcher",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  },
+  "ios": {
+    "contentInset": "always"
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

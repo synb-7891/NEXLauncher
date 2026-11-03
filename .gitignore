@@ -1,0 +1,29 @@
+# ---- 构建产物 ----
+bin/
+obj/
+dist/
+release/
+probe/
+.ui-backup-*/
+publish/
+
+# ---- IDE / 工具 ----
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userprefs
+
+# ---- 本地临时文件 ----
+*.log
+*.tmp
+*.bak
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# ---- 本机私有配置（账号 / 路径 / 皮肤上传记录） ----
+*.local.json
+settings.local.json
+.workbuddy/

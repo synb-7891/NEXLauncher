@@ -1,0 +1,15 @@
+{
+  "name": "NEX Launcher",
+  "short_name": "NEX",
+  "description": "第三方 Minecraft 启动器 · 跨端界面",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F5F7FB",
+  "theme_color": "#4C9AFF",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

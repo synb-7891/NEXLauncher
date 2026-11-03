@@ -1,0 +1,17 @@
+{
+  "name": "nex-launcher-mobile",
+  "version": "0.4.1",
+  "description": "NEX Launcher 伴侣 App（安卓 / iOS）",
+  "private": true,
+  "dependencies": {
+    "@capacitor/core": "^6.2.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/cli": "^6.2.0",
+    "@capacitor/ios": "^6.2.0"
+  },
+  "scripts": {
+    "cap": "cap"
+  }
+}

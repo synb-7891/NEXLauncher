@@ -1,33 +1,31 @@
 # NEX Launcher
 
-轻量的 Minecraft 第三方启动器（WPF / .NET 8），支持微软正版登录、离线登录、外置登录（Yggdrasil / authlib-injector）、
-多账号管理、3D 皮肤预览、PCL2 风格的资源下载（整合包 / 模组 / 资源包 / 光影包 / 数据包）、联机隧道与工具箱。
+NEX is an original, lightweight Windows launcher shell for Minecraft. It targets Windows 10 and 11 with .NET 8 WPF. The current build is a UI foundation; it does not claim to implement official account authentication, downloading every historical game version, mod loaders, skin uploads, or public server hosting.
 
-## 下载
+## Run
 
-| 版本 | 文件 | 大小 | 说明 |
-| --- | --- | --- | --- |
-| 公共版（推荐） | [NEXLauncher-0.4.0-full.zip](https://github.com/synb-7891/NEXLauncher/releases/download/v0.4.0/NEXLauncher-0.4.0-full.zip) | 约 68 MB | 自包含版，解压即用，无需安装 .NET 运行时 |
-| 精简版 | [NEXLauncher-0.4.0.zip](https://github.com/synb-7891/NEXLauncher/releases/download/v0.4.0/NEXLauncher-0.4.0.zip) | 约 1.5 MB | 需要电脑已安装 .NET 8 桌面运行时 |
+Install the .NET 8 SDK on Windows, then run from this directory:
 
-全部版本见 [Releases](https://github.com/synb-7891/NEXLauncher/releases)。
-
-## 0.4.0 说明
-
-- **已移除在线下载游戏版本功能**，改为「导入本机版本」：自动扫描官方启动器 / PCL2 / HMCL 的 `.minecraft` 目录，
-  一键导入已有版本，并识别 Fabric / Forge / NeoForge / Quilt / OptiFine。
-- 账号管理：多账号互不覆盖、外置登录、皮肤库与 3D 皮肤预览。
-- 资源下载按 PCL2 规格重做，走 MCIM 镜像加速。
-- 需要 Windows 10 及以上（x64）。
-
-## 更新源
-
-`manifest.json` 为启动器自动更新清单，格式：
-
-```json
-{ "version": "0.4.0", "url": "更新包直链", "notes": "更新内容", "publishedAt": "2026-11-01" }
+```powershell
+dotnet run
 ```
 
-## 许可
+To build a Windows executable:
 
-见 [LICENSE.txt](LICENSE.txt)。本项目与 Mojang / Microsoft 无关。
+```powershell
+dotnet publish -c Release -r win-x64 --self-contained false
+```
+
+## Current functions
+
+- A centered NEX splash screen that transitions to the launcher after three seconds.
+- Chinese navigation for the dashboard, versions, mods and modpacks, resource packs, skins, multiplayer, quick server, and settings.
+- Local Minecraft folder access and a server launch action for a user-provided `server.jar` with Java installed.
+- Server address copy action for sharing an address in game.
+
+## Boundaries and next steps
+
+- Microsoft account sign-in and game launch must use the official authentication flow and a valid licensed account; they are not implemented in this shell.
+- Version, mod, modpack, resource-pack, and skin catalogs need trusted provider integrations, compatibility checks, and download/install flows.
+- Quick server starts a local `server.jar` only when the user has supplied it and accepted its EULA. Public access depends on the server host, firewall, router/NAT port forwarding, and ISP; a launcher cannot guarantee a public IP or successful reachability.
+- The SVG in `Assets/nex-mark.svg` is the original NEX mark. Packaging it as a native Windows `.ico` can be added to the release pipeline.

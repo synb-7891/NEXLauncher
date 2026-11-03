@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>NEXLauncher</AssemblyName>
+    <RootNamespace>NEXLauncher.Cross</RootNamespace>
+    <!-- Mac/Linux/Windows 三端通用；发布时用 -r osx-arm64 / linux-x64 / win-x64 -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Photino：跨平台原生 WebView 外壳（Win=WebView2 / Mac=WKWebView / Linux=WebKitGTK） -->
+    <PackageReference Include="Photino.NET" Version="4.0.16" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

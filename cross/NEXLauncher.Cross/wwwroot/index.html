@@ -1,0 +1,1798 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#4C9AFF">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>NEX Launcher · 新版开始页面</title>
+<style>
+/* ============ 主题变量（来自 NEX Launcher UiPalette 真实预设） ============ */
+:root{
+  --bg:#030A15; --header:#071120; --surface:#0C1626; --surface-alt:#152238;
+  --border:#1E3050; --accent:#4C9AFF; --text:#F1F5F9; --text-dim:#CBD5E1;
+  --muted:#8FA3BE; --muted-light:#A6B7CC;
+  --radius:18px; --av:76px;
+  --font:"Microsoft YaHei UI","Microsoft YaHei","PingFang SC",system-ui,-apple-system,sans-serif;
+}
+/* ============ 浅色（白底）模式 · Verse 风格，变量按强调色自动派生 ============ */
+body[data-mode="light"]{
+  --bg:color-mix(in srgb,var(--accent) 5%,#F5F7FB);
+  --header:#FFFFFF; --surface:#FFFFFF;
+  --surface-alt:color-mix(in srgb,var(--accent) 7%,#F2F6FB);
+  --border:color-mix(in srgb,var(--accent) 20%,#D9E2EF);
+  --text:#16233B; --text-dim:#3A4B67; --muted:#64769A; --muted-light:#55678B;
+}
+body[data-mode="light"] .toast{box-shadow:0 12px 30px rgba(23,43,77,.18)}
+body[data-mode="light"] .widget{box-shadow:0 6px 18px rgba(23,43,77,.07)}
+body[data-mode="light"] .panel{box-shadow:0 4px 14px rgba(23,43,77,.06)}
+/* ---- 背景图层（个性化） ---- */
+.bg-layer{position:fixed;inset:0;z-index:0;background-size:cover;background-position:center;
+  display:none;transition:filter .3s}
+.bg-layer.blur{filter:blur(14px) saturate(1.05);transform:scale(1.05)}
+.bg-mask{position:fixed;inset:0;z-index:0;display:none;background:#02060D}
+body[data-mode="light"] .bg-mask{background:#EDF2F9}
+.app{position:relative;z-index:1}
+/* ---- 个性化面板 ---- */
+.bg-chips{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:60%}
+.bg-chip{padding:5px 11px;border-radius:9px;border:1px solid var(--border);font-size:12px;
+  color:var(--text-dim);cursor:pointer;background:var(--surface-alt);white-space:nowrap}
+.bg-chip.on{border-color:var(--accent);color:var(--accent);font-weight:600}
+/* ---- 联系我们 ---- */
+.contact-card{display:flex;align-items:center;gap:13px;padding:13px;border-radius:13px;
+  background:var(--surface-alt);border:1px solid var(--border)}
+.contact-ico{width:46px;height:46px;flex:0 0 46px;border-radius:13px;
+  background:linear-gradient(135deg,#12B7F5,#0C6FD1);display:grid;place-items:center;
+  color:#fff;font-weight:800;font-size:14px}
+.contact-txt{flex:1;min-width:0}
+.contact-txt b{display:block;font-size:14px}
+.contact-txt span{display:block;font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5}
+.contact-btn{padding:9px 16px;border-radius:11px;border:0;cursor:pointer;flex:0 0 auto;
+  background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 60%,#000));
+  color:#fff;font-size:13px;font-weight:700}
+.contact-btn:active{transform:scale(.96)}
+.contact-tip{font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.6}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  font-family:var(--font); background:var(--bg); color:var(--text);
+  overflow:hidden; user-select:none;
+}
+body.is-mobile{overflow:hidden}
+
+/* ============ 整体框架 ============ */
+.app{display:flex;height:100vh;height:100dvh}
+
+/* ---- 左侧导航（桌面） ---- */
+.rail{
+  width:216px;flex:0 0 216px;background:var(--header);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;padding:20px 14px;gap:2px;
+  overflow-y:auto;overflow-x:hidden;
+  transition:transform .3s cubic-bezier(.2,.8,.2,1);
+}
+.rail::-webkit-scrollbar{width:5px}
+.rail::-webkit-scrollbar-thumb{background:var(--border);border-radius:5px}
+.logo{display:flex;align-items:center;gap:10px;padding:4px 10px 18px}
+.logo-mark{
+  width:36px;height:36px;border-radius:11px;flex:0 0 36px;
+  background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 45%,#000));
+  display:grid;place-items:center;font-weight:800;font-size:17px;color:#fff;
+  box-shadow:0 4px 14px color-mix(in srgb,var(--accent) 40%,transparent);
+}
+.logo b{font-size:17px;letter-spacing:.5px}
+.logo span{display:block;font-size:10.5px;color:var(--muted);font-weight:400}
+.nav-item{
+  display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:12px;
+  color:var(--muted-light);cursor:pointer;font-size:14px;border:1px solid transparent;
+  transition:all .18s;position:relative;
+}
+.nav-item svg{width:18px;height:18px;flex:0 0 18px}
+.nav-item:hover{background:color-mix(in srgb,var(--accent) 8%,transparent);color:var(--text)}
+.nav-item.on{
+  background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--text);
+  border-color:color-mix(in srgb,var(--accent) 30%,transparent);font-weight:600;
+}
+.nav-item.on::before{
+  content:"";position:absolute;left:-14px;top:22%;height:56%;width:3px;
+  border-radius:3px;background:var(--accent);
+}
+.rail-foot{margin-top:auto;padding:12px 13px;border-top:1px solid var(--border);
+  font-size:11.5px;color:var(--muted);line-height:1.7}
+
+/* ---- 右侧舞台 ---- */
+.stage{flex:1;display:flex;flex-direction:column;min-width:0;position:relative}
+
+/* 顶栏 */
+.topbar{
+  height:60px;flex:0 0 60px;display:flex;align-items:center;gap:14px;
+  padding:0 22px;background:color-mix(in srgb,var(--header) 82%,transparent);
+  backdrop-filter:blur(14px);border-bottom:1px solid var(--border);z-index:30;
+}
+.topbar h1{font-size:17px;font-weight:700;letter-spacing:.3px}
+.topbar .sub{font-size:12px;color:var(--muted);font-weight:400;margin-left:2px}
+.topbar .spacer{flex:1}
+.tbtn{
+  display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 14px;
+  border-radius:10px;border:1px solid var(--border);background:var(--surface);
+  color:var(--text-dim);font-size:12.5px;cursor:pointer;font-family:var(--font);
+  transition:all .18s;
+}
+.tbtn:hover{border-color:var(--accent);color:var(--text)}
+.tbtn.active{background:color-mix(in srgb,var(--accent) 18%,transparent);
+  border-color:var(--accent);color:var(--text);font-weight:600}
+.tbtn svg{width:15px;height:15px}
+
+/* ============ 主内容区 ============ */
+.main{flex:1;position:relative;overflow:hidden}
+.page{
+  position:absolute;inset:0;overflow-y:auto;padding:22px;
+  opacity:0;transform:translateY(10px) scale(.995);pointer-events:none;
+  transition:opacity .26s,transform .26s;
+}
+.page.on{opacity:1;transform:none;pointer-events:auto}
+
+/* ============ 首页画布（Verse 式自由布局） ============ */
+.canvas{
+  position:relative;height:100%;min-height:520px;border-radius:var(--radius);
+  background:
+    radial-gradient(620px 340px at 12% -8%, color-mix(in srgb,var(--accent) 13%,transparent), transparent 62%),
+    radial-gradient(560px 420px at 96% 108%, color-mix(in srgb,var(--accent) 9%,transparent), transparent 60%),
+    var(--surface);
+  border:1px solid var(--border);overflow:hidden;
+  touch-action:none;
+}
+.canvas::before{ /* 点阵底纹 */
+  content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;
+  background-image:radial-gradient(color-mix(in srgb,var(--muted) 26%,transparent) 1px,transparent 1px);
+  background-size:26px 26px;
+}
+.guide{position:absolute;background:color-mix(in srgb,var(--accent) 65%,transparent);
+  opacity:0;pointer-events:none;transition:opacity .12s;border-radius:2px;z-index:5}
+.guide.v{width:1px;top:0;bottom:0;left:50%}
+.guide.h{height:1px;left:0;right:0;top:50%}
+.canvas.editing::before{opacity:.9;background-size:20px 20px}
+.canvas.editing .guide.show{opacity:1}
+.canvas.editing{box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--accent) 45%,transparent)}
+
+/* ---- 可拖拽卡片 ---- */
+.widget{
+  position:absolute;border-radius:16px;background:color-mix(in srgb,var(--surface-alt) 88%,transparent);
+  border:1px solid var(--border);backdrop-filter:blur(10px);
+  box-shadow:0 10px 30px rgba(0,0,0,.35);
+  transition:box-shadow .2s,border-color .2s,transform .15s;
+}
+.widget:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--border));
+  box-shadow:0 14px 38px rgba(0,0,0,.45)}
+.widget.dragging{
+  transition:none;cursor:grabbing;z-index:20;transform:scale(1.025);
+  box-shadow:0 22px 50px rgba(0,0,0,.55);
+  border-color:var(--accent);
+}
+.canvas.editing .widget{cursor:grab}
+.canvas.editing .widget::after{
+  content:"";position:absolute;inset:0;border-radius:16px;pointer-events:none;
+  border:1.5px dashed color-mix(in srgb,var(--accent) 55%,transparent);
+}
+.widget .drag-dot{
+  position:absolute;top:9px;right:9px;width:18px;height:18px;border-radius:50%;
+  background:var(--accent);color:#fff;font-size:10px;display:none;place-items:center;
+  z-index:3;line-height:1;
+}
+.canvas.editing .widget .drag-dot{display:grid}
+
+/* 头像卡片 */
+.w-profile{width:288px;padding:16px;display:flex;align-items:center;gap:14px;cursor:pointer}
+.avatar{
+  width:var(--av);height:var(--av);flex:0 0 var(--av);border-radius:14px;overflow:hidden;
+  border:2px solid color-mix(in srgb,var(--accent) 55%,transparent);
+  box-shadow:0 6px 18px rgba(0,0,0,.4);position:relative;
+}
+.avatar i{
+  display:block;width:100%;height:100%;
+  background-image:url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAMAAACdt4HsAAAAdVBMVEUAAAD///+3g2sAzMyzeV4KvLyqclkAr68ApKSbY0mUYD4ElZWPXj6QWT8FiIiBUzkAf38Denp2SzNVVVV3QjVSPYlqQDBKSkpGOqUAaGhBNZs/Pz86MYk3Nzc/KhVJJRAoKCg0JRIzJBFCHQorHg0mGgokGAjoejraAAAAAXRSTlMAQObYZgAAAtFJREFUeNrtlm132jAMhelKFWuOHdr1hYYkZcbz//+Ju5LjsXRwEujHcSNsOefc50gmEK+KYgyIEJtRq0sVw4AQwBN0DQBmudyTyl0OgDvgcz0g5iZcbuFyQAggxGFoXAO5+nKA7AFUN/m6GAB3BCM29QfU1MuN4kwyDhAIWASZgmZxye7HlEJAwC9XEhxikPvDot6jDLz+tib+qeshBC0D1FmAVpxiZFqviYjVldvQRuYB+vhxorsX4pc7Suz0VkgKCku+/5AYInp9JWIoaf0pCSTOAlJMjuvmu6s/np8PSJqaHW4KIC4BNA5+FuPh44Dv32HBTh7HX9DCX2UH9f1+X9b3xMDSfTeq3K+qyjARnQTs933/B8AO4pMAAvxsBbOABwDmKzjfgpEWPlfQtl273W47TG2L2UKVIWYyVc4NRlgrZJg2kCyOgO4I2ELWe1tVlgij5pDa1Q/A+/sG6REwGtsC8I+P3sAiA3IlWAm1G6sALE4DEI9QMUluxIXPZtQ7JPMEIG0IoYPE5I0C/AiwAmFmJ5cKi2kFCLgVJGV7YxQwtqAFERETY4CboCkAKrOHrJSNbSi5LJkyQgGII6CdAiw8Xso2xkquACMAlTYyqaBTo2CQQdZbhNEiNEMCv2diBUBTwNtbN+pNBZcyYLQiccPvCYBCmAD6HVw/xLqTdJe/DNTjYZMEHSHZZgBnAP8N6PudGHc9hBEA7Wnbep/3BSyMTPDmLVDE6qb/Ug9ZlYEqJKubbvqk2ZetvJOIiCW/5sChAMdEX6jgoSLoKxUYx4taKOeFti0v3Q1UXu2ieUBxdgBB+jpXgo7LAJ0A2iPAZjNiaQUFgKycB4rG/4OiI/DcecGJWC6Vm68AZkgrkJxhzUeDrMtagASgdqUwLd9ESABOASqdFjxE5UlABmnvap8BnDsvFL/YZwCnzwsK4ALgGcCJ8wLnTUCQTP/8Hn4DsAh5tPm8HxQAAAAASUVORK5CYII=");
+  background-size:calc(var(--av)*8) calc(var(--av)*8);
+  background-position:calc(var(--av)*-1) calc(var(--av)*-1);
+  image-rendering:pixelated;
+}
+.w-profile .name{font-size:17px;font-weight:700;display:flex;align-items:center;gap:8px}
+.badge{font-size:10px;padding:2.5px 8px;border-radius:20px;font-weight:600;
+  background:color-mix(in srgb,var(--accent) 20%,transparent);color:var(--accent)}
+.w-profile .mode{font-size:12px;color:var(--muted);margin-top:5px}
+.w-profile .go{font-size:11.5px;color:var(--accent);margin-top:3px;opacity:.85}
+
+/* 启动卡片（PCL2 风格主按钮） */
+.w-launch{width:356px;padding:18px;display:flex;flex-direction:column;gap:13px}
+.ver-row{display:flex;align-items:center;gap:9px}
+.ver-chip{
+  display:flex;align-items:center;gap:8px;padding:8px 13px;border-radius:11px;
+  background:var(--surface);border:1px solid var(--border);cursor:pointer;
+  font-size:13px;color:var(--text);transition:border-color .18s;font-family:var(--font);
+}
+.ver-chip:hover{border-color:var(--accent)}
+.ver-chip b{font-weight:700}
+.ver-chip .tag{font-size:10px;color:var(--muted);border:1px solid var(--border);
+  padding:1.5px 7px;border-radius:20px}
+.launch-btn{
+  height:62px;border:none;border-radius:14px;cursor:pointer;position:relative;overflow:hidden;
+  font-family:var(--font);font-size:19px;font-weight:800;letter-spacing:2px;color:#fff;
+  background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 52%,#0a1a30));
+  box-shadow:0 8px 24px color-mix(in srgb,var(--accent) 38%,transparent);
+  transition:transform .15s,box-shadow .2s,filter .2s;
+}
+.launch-btn:hover{transform:translateY(-2px);filter:brightness(1.08)}
+.launch-btn:active{transform:translateY(0) scale(.985)}
+.launch-btn::after{ /* 高光扫过 */
+  content:"";position:absolute;top:0;left:-80%;width:55%;height:100%;
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,.28),transparent);
+  transform:skewX(-18deg);animation:shine 3.6s infinite;
+}
+@keyframes shine{0%,72%{left:-80%}88%,100%{left:130%}}
+.launch-btn .prog{
+  position:absolute;left:0;bottom:0;height:4px;width:0;background:#fff;opacity:.9;
+  transition:width .2s linear;
+}
+.launch-btn.busy .prog{width:var(--p,0%)}
+.launch-sub{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted)}
+.ram-meter{height:5px;border-radius:5px;background:var(--surface);overflow:hidden;flex:1;margin:0 8px}
+.ram-meter i{display:block;height:100%;width:58%;border-radius:5px;
+  background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#fff))}
+
+/* 公告卡 */
+.w-news{width:400px;padding:17px 18px}
+.w-news h3{font-size:14px;display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.w-news h3 .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 8px var(--accent)}
+.news-item{padding:8px 0;border-top:1px solid color-mix(in srgb,var(--border) 60%,transparent);
+  font-size:12.5px;color:var(--text-dim);display:flex;gap:8px;align-items:baseline;cursor:pointer}
+.news-item:first-of-type{border-top:none}
+.news-item:hover{color:var(--text)}
+.news-item .t{flex:0 0 auto;font-size:10.5px;color:var(--muted)}
+
+/* 数据卡 */
+.w-stats{width:300px;padding:16px 18px}
+.w-stats h3,.w-quick h3,.w-res h3{font-size:13px;color:var(--muted);margin-bottom:12px;font-weight:600}
+.stat-row{display:flex;gap:10px}
+.stat-cell{flex:1;background:var(--surface);border:1px solid var(--border);
+  border-radius:12px;padding:11px 12px}
+.stat-cell b{font-size:19px;font-weight:800;color:var(--text)}
+.stat-cell b em{font-style:normal;font-size:11px;color:var(--muted);font-weight:400;margin-left:2px}
+.stat-cell span{display:block;font-size:10.5px;color:var(--muted);margin-top:3px}
+.bars{display:flex;align-items:flex-end;gap:5px;height:40px;margin-top:12px}
+.bars i{flex:1;border-radius:4px 4px 2px 2px;
+  background:linear-gradient(180deg,var(--accent),color-mix(in srgb,var(--accent) 35%,transparent))}
+
+/* 快捷卡 */
+.w-quick{width:280px;padding:16px 18px}
+.quick-row{display:flex;gap:9px}
+.qbtn{flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;
+  padding:13px 6px;border-radius:12px;background:var(--surface);
+  border:1px solid var(--border);cursor:pointer;font-size:11.5px;color:var(--text-dim);
+  transition:all .18s;font-family:var(--font)}
+.qbtn:hover{border-color:var(--accent);color:var(--text);transform:translateY(-2px)}
+.qbtn svg{width:20px;height:20px;color:var(--accent)}
+.qbtn b{font-size:10.5px;color:var(--muted);font-weight:500}
+
+/* 资源快捷卡 */
+.w-res{width:300px;padding:16px 18px}
+.res-row{display:flex;gap:8px;flex-wrap:wrap}
+.res-tag{font-size:11.5px;padding:7px 12px;border-radius:20px;cursor:pointer;
+  background:var(--surface);border:1px solid var(--border);color:var(--text-dim);transition:all .15s}
+.res-tag:hover{border-color:var(--accent);color:var(--text)}
+
+/* 编辑模式提示条 */
+.edit-bar{
+  position:absolute;left:50%;bottom:18px;transform:translateX(-50%) translateY(70px);
+  display:flex;gap:9px;align-items:center;padding:9px 12px;border-radius:14px;
+  background:color-mix(in srgb,var(--header) 92%,transparent);border:1px solid var(--accent);
+  backdrop-filter:blur(12px);z-index:40;transition:transform .3s cubic-bezier(.2,.8,.2,1);
+  box-shadow:0 10px 30px rgba(0,0,0,.5);
+}
+.edit-bar.show{transform:translateX(-50%)}
+.edit-bar span{font-size:12px;color:var(--text-dim);padding:0 5px}
+.ebtn{height:32px;padding:0 13px;border-radius:9px;border:1px solid var(--border);
+  background:var(--surface);color:var(--text-dim);font-size:12px;cursor:pointer;font-family:var(--font)}
+.ebtn:hover{border-color:var(--accent);color:var(--text)}
+.ebtn.done{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+
+/* ============ 其它页面 ============ */
+.panel{
+  background:color-mix(in srgb,var(--surface-alt) 88%,transparent);border:1px solid var(--border);
+  border-radius:var(--radius);padding:20px;backdrop-filter:blur(10px);
+}
+.panel h2{font-size:15px;margin-bottom:14px;display:flex;align-items:center;gap:9px}
+.panel h2 svg{width:17px;height:17px;color:var(--accent)}
+.grid2{display:grid;grid-template-columns:340px 1fr;gap:16px;align-items:start}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+
+/* 账号页 */
+.account-hero{display:flex;gap:22px;align-items:center}
+.account-hero .avatar{--av:104px}
+.account-hero .who b{font-size:22px;font-weight:800}
+.account-hero .who .mode{font-size:13px;color:var(--muted);margin-top:5px}
+.acc-actions{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+.abtn{height:40px;padding:0 18px;border-radius:11px;border:1px solid var(--border);
+  background:var(--surface);color:var(--text-dim);font-size:13px;cursor:pointer;
+  display:inline-flex;align-items:center;gap:8px;font-family:var(--font);transition:all .18s}
+.abtn:hover{border-color:var(--accent);color:var(--text)}
+.abtn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+.abtn.primary:hover{filter:brightness(1.1)}
+
+/* 版本列表 */
+.ver-item{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:13px;
+  background:var(--surface);border:1px solid var(--border);margin-bottom:10px;transition:all .18s}
+.ver-item:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--border))}
+.ver-item .ic{width:42px;height:42px;border-radius:11px;flex:0 0 42px;display:grid;place-items:center;
+  background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent)}
+.ver-item .ic svg{width:21px;height:21px}
+.ver-item b{font-size:14px}
+.ver-item .meta{font-size:11.5px;color:var(--muted);margin-top:3px}
+.ver-item .now{margin-left:auto;font-size:11px;color:var(--accent);
+  border:1px solid color-mix(in srgb,var(--accent) 45%,transparent);padding:4px 11px;border-radius:20px}
+
+/* 设置页 */
+.theme-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(78px,1fr));gap:11px}
+.theme-sw{border-radius:13px;border:2px solid var(--border);cursor:pointer;padding:10px;
+  background:var(--surface);transition:all .18s;text-align:center}
+.theme-sw:hover{transform:translateY(-2px)}
+.theme-sw.on{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
+.theme-sw .ball{height:34px;border-radius:9px;margin-bottom:8px}
+.theme-sw span{font-size:11.5px;color:var(--text-dim);white-space:nowrap;display:block;overflow:hidden;text-overflow:ellipsis}
+.set-row{display:flex;align-items:center;gap:14px;padding:13px 2px;
+  border-top:1px solid color-mix(in srgb,var(--border) 55%,transparent);font-size:13.5px}
+.set-row:first-of-type{border-top:none}
+.set-row .lbl{flex:1}
+.set-row .lbl span{display:block;font-size:11.5px;color:var(--muted);margin-top:3px}
+.switch{width:44px;height:24px;border-radius:20px;background:var(--surface);border:1px solid var(--border);
+  position:relative;cursor:pointer;transition:all .2s;flex:0 0 44px}
+.switch::after{content:"";position:absolute;top:2.5px;left:3px;width:17px;height:17px;border-radius:50%;
+  background:var(--muted);transition:all .2s}
+.switch.on{background:color-mix(in srgb,var(--accent) 30%,transparent);border-color:var(--accent)}
+.switch.on::after{left:22px;background:var(--accent)}
+input[type=range]{accent-color:var(--accent);width:190px}
+
+/* ============ 导航分组 ============ */
+.nav-group{font-size:10px;color:var(--muted);letter-spacing:1.6px;font-weight:700;
+  padding:15px 13px 5px;opacity:.7}
+.nav-item .live{width:7px;height:7px;border-radius:50%;background:#4ECB73;margin-left:auto;
+  box-shadow:0 0 0 0 rgba(78,203,115,.7);animation:livePulse 2.2s infinite}
+@keyframes livePulse{0%{box-shadow:0 0 0 0 rgba(78,203,115,.55)}70%{box-shadow:0 0 0 7px rgba(78,203,115,0)}100%{box-shadow:0 0 0 0 rgba(78,203,115,0)}}
+
+/* ============ 首页·安全防护小卡 ============ */
+.w-sec{width:302px;padding:15px 17px;display:flex;gap:13px;align-items:center;cursor:pointer}
+.w-sec .shield{width:46px;height:46px;flex:0 0 46px;border-radius:14px;display:grid;place-items:center;
+  color:#4ECB73;border:1px solid rgba(78,203,115,.42);
+  background:radial-gradient(circle at 32% 26%,rgba(78,203,115,.34),transparent 70%),rgba(78,203,115,.09);
+  box-shadow:0 6px 18px rgba(78,203,115,.18)}
+.w-sec .shield svg{width:24px;height:24px}
+.w-sec h4{font-size:13px;margin-bottom:3px}
+.w-sec .meta{font-size:11px;color:var(--muted)}
+.w-sec .dots{display:flex;gap:4px;margin-top:7px}
+.w-sec .dots i{width:17px;height:4px;border-radius:3px;background:#4ECB73;opacity:.85;
+  box-shadow:0 0 8px rgba(78,203,115,.55)}
+
+/* ============ 安全防护页 ============ */
+.sec-hero{display:flex;gap:22px;align-items:center;padding:24px;margin-bottom:16px;
+  border-radius:var(--radius);border:1px solid rgba(78,203,115,.26);
+  background:
+    radial-gradient(520px 220px at 6% -10%,rgba(78,203,115,.14),transparent 68%),
+    color-mix(in srgb,var(--surface-alt) 90%,transparent)}
+.sec-shield{width:88px;height:88px;flex:0 0 88px;border-radius:26px;display:grid;place-items:center;
+  color:#4ECB73;position:relative;border:1px solid rgba(78,203,115,.45);
+  background:radial-gradient(circle at 32% 26%,rgba(78,203,115,.35),transparent 70%),#0b1a14}
+.sec-shield svg{width:44px;height:44px}
+.sec-shield::after{content:"";position:absolute;inset:-7px;border-radius:32px;
+  border:1px solid rgba(78,203,115,.22);animation:pulseRing 2.8s ease-out infinite}
+@keyframes pulseRing{0%{transform:scale(.94);opacity:.85}70%{transform:scale(1.07);opacity:0}100%{opacity:0}}
+.sec-hero h2{font-size:19px;display:flex;align-items:center;gap:10px}
+.sec-hero .meta{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.8}
+.sec-hero .meta b{color:var(--text-dim);font-weight:600}
+.sec-hero .right{margin-left:auto;display:flex;flex-direction:column;gap:9px;align-items:flex-end}
+.live-chip{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;color:#4ECB73;
+  background:rgba(78,203,115,.12);border:1px solid rgba(78,203,115,.35);
+  padding:5px 12px;border-radius:20px;font-weight:600}
+.live-chip i{width:6px;height:6px;border-radius:50%;background:#4ECB73;animation:livePulse 2.2s infinite}
+
+.layer{display:flex;gap:14px;padding:15px 2px;align-items:flex-start;
+  border-top:1px solid color-mix(in srgb,var(--border) 55%,transparent)}
+.layer:first-of-type{border-top:none;padding-top:4px}
+.layer .no{width:28px;height:28px;flex:0 0 28px;border-radius:9px;display:grid;place-items:center;
+  font-size:12.5px;font-weight:800;color:var(--accent);background:color-mix(in srgb,var(--accent) 15%,transparent);
+  border:1px solid color-mix(in srgb,var(--accent) 32%,transparent)}
+.layer .txt{flex:1;min-width:0}
+.layer b{font-size:13.5px;display:flex;align-items:center;gap:8px}
+.layer p{font-size:11.8px;color:var(--muted);margin-top:4px;line-height:1.65}
+.chip-ok{font-size:10px;padding:2.5px 8px;border-radius:20px;font-weight:600;
+  background:rgba(78,203,115,.14);color:#4ECB73;border:1px solid rgba(78,203,115,.32)}
+.chip-warn{font-size:10px;padding:2.5px 8px;border-radius:20px;font-weight:600;
+  background:rgba(246,168,42,.15);color:#F6A82A;border:1px solid rgba(246,168,42,.35)}
+.chip-bad{font-size:10px;padding:2.5px 8px;border-radius:20px;font-weight:600;
+  background:rgba(248,113,113,.15);color:#F87171;border:1px solid rgba(248,113,113,.35)}
+
+.canary-row{display:flex;gap:12px;align-items:center;padding:10px 12px;border-radius:11px;
+  background:var(--surface);border:1px solid var(--border);margin-bottom:8px}
+.canary-row .k{font-size:10px;font-weight:700;color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 14%,transparent);padding:3px 8px;border-radius:7px;flex:0 0 auto}
+.canary-row .p{font-size:11.5px;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.canary-row .s{font-size:10.5px;color:#4ECB73;flex:0 0 auto}
+
+.log-row{display:flex;gap:11px;padding:11px 0;border-top:1px solid color-mix(in srgb,var(--border) 50%,transparent);
+  align-items:flex-start}
+.log-row:first-child{border-top:none}
+.log-row .t{font-size:11px;color:var(--muted);flex:0 0 106px}
+.log-row .body{flex:1;min-width:0}
+.log-row .body b{font-size:12.5px;font-weight:600;display:block}
+.log-row .body > span{font-size:11px;color:var(--muted);display:block;margin-top:3px;line-height:1.6}
+
+/* ============ 百宝箱 ============ */
+.tool-sec{margin-bottom:18px}
+.tool-sec > h3{font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.6px;
+  margin:0 0 10px 2px;display:flex;align-items:center;gap:8px}
+.tool-sec > h3::before{content:"";width:3px;height:12px;border-radius:3px;background:var(--accent)}
+.tool-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(216px,1fr));gap:12px}
+.tool{display:flex;gap:12px;padding:15px;border-radius:15px;background:var(--surface);
+  border:1px solid var(--border);cursor:pointer;transition:all .2s;align-items:center;position:relative;overflow:hidden}
+.tool::after{content:"";position:absolute;inset:0;opacity:0;transition:opacity .25s;pointer-events:none;
+  background:radial-gradient(220px 90px at 10% 0%,color-mix(in srgb,var(--accent) 16%,transparent),transparent 70%)}
+.tool:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--border));transform:translateY(-3px);
+  box-shadow:0 12px 26px rgba(0,0,0,.38)}
+.tool:hover::after{opacity:1}
+.tool .ic{width:42px;height:42px;flex:0 0 42px;border-radius:12px;display:grid;place-items:center;
+  background:color-mix(in srgb,var(--accent) 13%,transparent);color:var(--accent);
+  border:1px solid color-mix(in srgb,var(--accent) 22%,transparent)}
+.tool .ic svg{width:20px;height:20px}
+.tool .ic.amber{color:#F6A82A;background:rgba(246,168,42,.12);border-color:rgba(246,168,42,.28)}
+.tool .ic.green{color:#4ECB73;background:rgba(78,203,115,.12);border-color:rgba(78,203,115,.28)}
+.tool .ic.purple{color:#B06BFF;background:rgba(176,107,255,.12);border-color:rgba(176,107,255,.28)}
+.tool b{font-size:13px;display:block}
+.tool span{font-size:11px;color:var(--muted);display:block;margin-top:3px;line-height:1.5}
+
+/* ============ 皮肤站 ============ */
+.skin-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.cat{font-size:12px;padding:7px 14px;border-radius:20px;cursor:pointer;color:var(--text-dim);
+  background:var(--surface);border:1px solid var(--border);transition:all .18s;font-family:var(--font)}
+.cat:hover{border-color:var(--accent)}
+.cat.on{background:color-mix(in srgb,var(--accent) 16%,transparent);
+  border-color:var(--accent);color:var(--text);font-weight:600}
+.skin-search{height:34px;padding:0 14px;border-radius:20px;background:var(--surface);
+  border:1px solid var(--border);color:var(--text);font-size:12.5px;font-family:var(--font);
+  outline:none;width:190px;transition:border-color .18s}
+.skin-search:focus{border-color:var(--accent)}
+.skin-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(152px,1fr));gap:14px}
+.skin-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px 12px;
+  text-align:center;cursor:pointer;transition:all .22s;position:relative;overflow:hidden}
+.skin-card::before{content:"";position:absolute;inset:0;opacity:0;transition:opacity .25s;pointer-events:none;
+  background:radial-gradient(180px 110px at 50% 0%,color-mix(in srgb,var(--accent) 18%,transparent),transparent 72%)}
+.skin-card:hover{transform:translateY(-4px);border-color:color-mix(in srgb,var(--accent) 55%,var(--border));
+  box-shadow:0 16px 32px rgba(0,0,0,.45)}
+.skin-card:hover::before{opacity:1}
+.skin-card.on{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 20%,transparent)}
+.skin-face{width:76px;height:76px;margin:0 auto 11px;border-radius:20px;image-rendering:pixelated;
+  border:1px solid var(--border);background-size:cover;box-shadow:0 6px 16px rgba(0,0,0,.35)}
+.skin-card b{font-size:13px}
+.skin-card .m{font-size:11px;color:var(--muted);margin-top:4px}
+.skin-card .wear{position:absolute;top:9px;right:9px;font-size:9.5px;padding:2.5px 8px;border-radius:20px;
+  background:var(--accent);color:#fff;font-weight:700}
+.skin-foot{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;align-items:center}
+
+/* ============ Toast ============ */
+.toast{
+  position:fixed;left:50%;top:22px;transform:translateX(-50%) translateY(-80px);
+  background:color-mix(in srgb,var(--header) 94%,transparent);border:1px solid var(--accent);
+  color:var(--text);padding:11px 20px;border-radius:13px;font-size:13px;z-index:99;
+  backdrop-filter:blur(12px);box-shadow:0 12px 34px rgba(0,0,0,.5);transition:transform .35s cubic-bezier(.2,.8,.2,1);
+  display:flex;gap:9px;align-items:center;
+}
+.toast.show{transform:translateX(-50%) translateY(0)}
+.toast svg{width:16px;height:16px;color:var(--accent)}
+
+/* ============ 手机版 ============ */
+body.is-mobile .rail{display:none}
+body.is-mobile .topbar{padding:0 16px}
+body.is-mobile .topbar .tbtn{display:none}
+body.is-mobile .topbar .sub{display:none}
+body.is-mobile .main{padding-bottom:64px}
+body.is-mobile .page{padding:14px}
+body.is-mobile .canvas{height:auto;min-height:0;border:none;background:none;padding:0}
+body.is-mobile .canvas::before{display:none}
+body.is-mobile .widget{position:static !important;width:100% !important;
+  left:auto !important;top:auto !important;margin-bottom:12px;transform:none !important}
+body.is-mobile .canvas.editing .widget{cursor:default}
+body.is-mobile .widget .drag-dot{display:none !important}
+body.is-mobile .w-launch .launch-btn{height:56px}
+body.is-mobile .stat-row{flex-wrap:wrap}
+body.is-mobile .grid2,body.is-mobile .grid3{grid-template-columns:1fr}
+body.is-mobile .theme-grid{grid-template-columns:repeat(3,1fr)}
+.tabbar{
+  position:fixed;left:0;right:0;bottom:0;height:60px;z-index:50;display:none;
+  background:color-mix(in srgb,var(--header) 94%,transparent);backdrop-filter:blur(16px);
+  border-top:1px solid var(--border);padding-bottom:env(safe-area-inset-bottom);
+}
+.tabbar .ti{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  color:var(--muted);font-size:10px;cursor:pointer}
+.tabbar .ti svg{width:20px;height:20px}
+.tabbar .ti.on{color:var(--accent)}
+body.is-mobile .tabbar{display:flex}
+
+/* 手机预览框 */
+.phone-wrap{
+  position:fixed;inset:0;z-index:80;display:none;place-items:center;
+  background:rgba(0,0,0,.62);backdrop-filter:blur(6px);
+}
+.phone-wrap.show{display:grid}
+.phone{
+  width:390px;height:764px;max-height:92vh;border-radius:44px;overflow:hidden;position:relative;
+  border:9px solid #1b1f27;box-shadow:0 30px 80px rgba(0,0,0,.7);background:var(--bg);
+  display:flex;flex-direction:column;
+}
+.phone .notch{position:absolute;top:0;left:50%;transform:translateX(-50%);
+  width:130px;height:24px;background:#1b1f27;border-radius:0 0 16px 16px;z-index:60}
+.phone .app{flex:1;min-height:0}
+.phone-close{position:absolute;top:26px;right:36px;color:#fff;font-size:26px;cursor:pointer;
+  width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.12);display:grid;place-items:center}
+
+/* 小屏自动进手机版 */
+@media (max-width:760px){
+  .phone-wrap .phone{width:100vw;height:100dvh;max-height:none;border:none;border-radius:0}
+  .phone-wrap .notch{display:none}
+}
+
+/* ============ 原生桥接提示条 ============ */
+.native-bar{display:flex;align-items:center;gap:12px;justify-content:space-between;
+  background:linear-gradient(90deg,rgba(76,154,255,.14),rgba(76,154,255,.02));
+  border:1px solid rgba(76,154,255,.28);border-radius:12px;padding:9px 14px;
+  margin-bottom:14px;font-size:12px;color:var(--text-dim);line-height:1.5}
+.native-bar b{color:var(--text)}
+.native-bar .abtn{white-space:nowrap;flex:0 0 auto}
+@media (max-width:760px){ .native-bar{flex-direction:column;align-items:stretch;gap:8px} }
+/* ============ 资源下载（PCL2 搜索 + Verse 卡片） ============ */
+.res-hero{border-radius:20px;background:var(--surface);border:1px solid var(--border);padding:18px 20px;
+  box-shadow:0 6px 18px rgba(2,10,25,.10)}
+.res-search{display:flex;gap:10px;align-items:center}
+.res-search .sbox{flex:1;display:flex;align-items:center;gap:10px;background:var(--surface-alt);
+  border:1.5px solid var(--border);border-radius:999px;padding:11px 18px;transition:border-color .2s}
+.res-search .sbox:focus-within{border-color:var(--accent)}
+.res-search input{flex:1;border:0;outline:0;background:transparent;color:var(--text);font-size:14.5px;font-family:var(--font)}
+.res-search input::placeholder{color:var(--muted)}
+.res-search svg{width:17px;height:17px;color:var(--muted);flex:0 0 17px}
+.seg{display:flex;background:var(--surface-alt);border:1px solid var(--border);border-radius:999px;padding:3px;flex:0 0 auto}
+.seg b{padding:7px 16px;border-radius:999px;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer;transition:all .15s}
+.seg b.on{background:var(--accent);color:#fff;box-shadow:0 3px 10px color-mix(in srgb,var(--accent) 45%,transparent)}
+.res-filters{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;align-items:center}
+.res-filters .chip{padding:6px 14px;border-radius:999px;border:1px solid var(--border);font-size:12.5px;
+  color:var(--text-dim);cursor:pointer;background:var(--surface);transition:all .15s;white-space:nowrap}
+.res-filters .chip:hover{border-color:var(--accent);color:var(--accent)}
+.res-filters .chip.on{background:color-mix(in srgb,var(--accent) 14%,transparent);border-color:var(--accent);color:var(--accent);font-weight:600}
+.res-filters select{padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:var(--surface);
+  color:var(--text-dim);font-size:12.5px;font-family:var(--font);outline:0;cursor:pointer}
+.res-filters .sep{width:1px;height:18px;background:var(--border);margin:0 4px}
+.mod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(248px,1fr));gap:14px;margin-top:16px}
+.mod-card{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:14px;
+  cursor:pointer;transition:transform .18s,box-shadow .18s,border-color .18s;display:flex;flex-direction:column;gap:10px}
+.mod-card:hover{transform:translateY(-3px);border-color:color-mix(in srgb,var(--accent) 50%,var(--border));
+  box-shadow:0 10px 26px rgba(2,10,25,.13)}
+.mod-head{display:flex;gap:11px;align-items:center;min-width:0}
+.mod-ico{width:52px;height:52px;flex:0 0 52px;border-radius:14px;object-fit:cover;
+  border:1px solid var(--border);background:var(--surface-alt)}
+.mod-ico-ph{width:52px;height:52px;flex:0 0 52px;border-radius:14px;display:grid;place-items:center;
+  color:#fff;font-weight:800;font-size:20px}
+.mod-name{font-size:14px;font-weight:700;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mod-author{font-size:11.5px;color:var(--muted);margin-top:2px}
+.mod-intro{background:var(--surface-alt);border-radius:12px;padding:9px 12px;
+  font-size:12px;color:var(--text-dim);line-height:1.55;min-height:56px;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.mod-foot{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--muted)}
+.mod-foot .stat{display:flex;align-items:center;gap:4px}
+.mod-foot svg{width:12px;height:12px}
+.mod-tags{display:flex;gap:5px;margin-left:auto;flex-wrap:wrap;justify-content:flex-end}
+.mod-tags i{font-style:normal;font-size:10.5px;padding:2.5px 8px;border-radius:7px;
+  background:color-mix(in srgb,var(--accent) 13%,transparent);color:var(--accent);font-weight:600}
+.res-more{margin:18px auto 0;display:block;padding:11px 34px;border-radius:999px;border:1.5px solid var(--border);
+  background:var(--surface);color:var(--text-dim);font-size:13px;font-family:var(--font);cursor:pointer;transition:all .15s}
+.res-more:hover{border-color:var(--accent);color:var(--accent)}
+.skel{background:linear-gradient(90deg,var(--surface-alt) 25%,color-mix(in srgb,var(--accent) 10%,var(--surface-alt)) 50%,var(--surface-alt) 75%);
+  background-size:200% 100%;animation:skel 1.1s infinite;border-radius:12px}
+@keyframes skel{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.skel-card{border-radius:18px;border:1px solid var(--border);padding:14px;display:flex;flex-direction:column;gap:10px}
+.res-modal{position:fixed;inset:0;z-index:60;display:none;place-items:center;background:rgba(2,8,18,.55);backdrop-filter:blur(6px)}
+.res-modal.show{display:grid}
+.res-modal .box{width:min(680px,92vw);max-height:84vh;overflow-y:auto;background:var(--surface);
+  border:1px solid var(--border);border-radius:20px;padding:22px;box-shadow:0 30px 80px rgba(0,0,0,.4)}
+.res-modal .banner{width:100%;height:170px;border-radius:16px;object-fit:cover;border:1px solid var(--border);background:var(--surface-alt)}
+.res-modal h3{font-size:18px;margin-top:14px}
+.res-modal .desc{margin-top:10px;font-size:13px;line-height:1.7;color:var(--text-dim);
+  background:var(--surface-alt);border-radius:12px;padding:12px 14px}
+.res-modal .meta-row{display:flex;gap:16px;margin-top:12px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.res-modal .actions{display:flex;gap:10px;margin-top:16px}
+.res-modal .actions button{flex:1;padding:12px;border-radius:13px;border:0;font-family:var(--font);
+  font-size:13.5px;font-weight:700;cursor:pointer}
+.res-modal .dl{background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 60%,#000));color:#fff}
+.res-modal .gh{background:var(--surface-alt);border:1px solid var(--border);color:var(--text-dim)}
+.res-empty{text-align:center;padding:44px 0;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<div class="bg-layer" id="bgLayer"></div>
+<div class="bg-mask" id="bgMask"></div>
+
+<!-- ============ 桌面/通用框架 ============ -->
+<div class="app" id="app">
+  <aside class="rail">
+    <div class="logo">
+      <div class="logo-mark">N</div>
+      <div><b>NEX Launcher</b><span>v0.4.1 · 完整版</span></div>
+    </div>
+    <div class="nav-group">游戏</div>
+    <div class="nav-item on" data-page="home">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>开始页面</div>
+    <div class="nav-item" data-page="versions">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg>游戏版本</div>
+    <div class="nav-item" data-page="mods">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/></svg>模组</div>
+    <div class="nav-item" data-page="res">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></svg>资源下载</div>
+
+    <div class="nav-group">外观</div>
+    <div class="nav-item" data-page="skins">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c3 0 5 2 5 5v3l-2 1v6H9v-6l-2-1V8c0-3 2-5 5-5z"/><path d="M9.5 8.5h.01M14.5 8.5h.01"/></svg>皮肤站</div>
+
+    <div class="nav-group">工具</div>
+    <div class="nav-item" data-page="tools">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="11" rx="2.5"/><path d="M3 13h18"/><path d="M8 9V6.5A2.5 2.5 0 0 1 10.5 4h3A2.5 2.5 0 0 1 16 6.5V9"/><path d="M12 13v3"/></svg>百宝箱</div>
+
+    <div class="nav-group">系统</div>
+    <div class="nav-item" data-page="security">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v6c0 4.4 3 8 7 9 4-1 7-4.6 7-9V6l-7-3z"/><path d="m9 12 2 2 4-4"/></svg>安全防护<i class="live"></i></div>
+    <div class="nav-item" data-page="account">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>账号</div>
+    <div class="nav-item" data-page="settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z"/></svg>设置</div>
+    <div class="nav-item" id="navContact">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.6a8.4 8.4 0 0 1-8.9 8.3 9 9 0 0 1-3.9-.8L3 20l1-4.1a8.4 8.4 0 1 1 17-4.3z"/></svg>联系我们</div>
+    <div class="rail-foot">NEX Launcher<br>第三方 Minecraft 启动器<br>个性化 · 账号 45t</div>
+  </aside>
+
+  <div class="stage">
+    <header class="topbar">
+      <h1 id="pageTitle">开始页面</h1><span class="sub" id="pageSub">自由拖拽，定制你的主页</span>
+      <div class="spacer"></div>
+      <button class="tbtn" id="btnPhone">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg>手机预览</button>
+      <button class="tbtn" id="btnEdit">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>编辑布局</button>
+    </header>
+
+    <div class="main">
+      <!-- ======= 首页：自由拖拽画布 ======= -->
+      <section class="page on" id="page-home">
+        <div class="canvas" id="canvas">
+          <div class="guide v" id="gv"></div><div class="guide h" id="gh"></div>
+
+          <div class="widget w-profile" data-id="profile" data-order="1" title="点击进入账号页">
+            <span class="drag-dot">✥</span>
+            <div class="avatar"><i></i></div>
+            <div>
+              <div class="name">45t <span class="badge">离线模式</span></div>
+              <div class="mode">离线账号 · 单人皮肤已启用</div>
+              <div class="go">点击头像进入账号页 →</div>
+            </div>
+          </div>
+
+          <div class="widget w-launch" data-id="launch" data-order="2">
+            <span class="drag-dot">✥</span>
+            <div class="ver-row">
+              <button class="ver-chip" data-goto="versions"><b>1.21.11</b><span class="tag">原版</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+              <span style="font-size:11.5px;color:var(--muted)">最近游玩 · 昨天</span>
+            </div>
+            <button class="launch-btn" id="btnLaunch">启 动 游 戏<i class="prog" id="prog"></i></button>
+            <div class="launch-sub">
+              <span>内存 <b id="ramTxt">2.4</b>/4.0 GB</span>
+              <div class="ram-meter"><i></i></div>
+              <span>Java 21 · 镜像加速中</span>
+            </div>
+          </div>
+
+          <div class="widget w-news" data-id="news" data-order="4">
+            <span class="drag-dot">✥</span>
+            <h3><span class="dot"></span>公告 · NEX 0.4.1</h3>
+            <div class="news-item"><span class="t">11-02</span>多账号切换升级，外置登录支持 LittleSkin 等 Yggdrasil 服务器</div>
+            <div class="news-item"><span class="t">11-01</span>皮肤选择器上线，离线账号也能换皮肤</div>
+            <div class="news-item"><span class="t">10-31</span>一键开服隧道改良，授权链接自动复制</div>
+          </div>
+
+          <div class="widget w-stats" data-id="stats" data-order="3">
+            <span class="drag-dot">✥</span>
+            <h3>本周游戏数据</h3>
+            <div class="stat-row">
+              <div class="stat-cell"><b>12.6<em>小时</em></b><span>游戏时长</span></div>
+              <div class="stat-cell"><b>23<em>次</em></b><span>启动次数</span></div>
+            </div>
+            <div class="bars">
+              <i style="height:35%"></i><i style="height:58%"></i><i style="height:42%"></i>
+              <i style="height:76%"></i><i style="height:64%"></i><i style="height:92%"></i><i style="height:50%"></i>
+            </div>
+          </div>
+
+          <div class="widget w-quick" data-id="quick" data-order="5">
+            <span class="drag-dot">✥</span>
+            <h3>快捷功能</h3>
+            <div class="quick-row">
+              <button class="qbtn" data-toast="一键开服：正在申请隧道（演示）">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 4 5.6 4 9s-1.5 6.4-4 9c-2.5-2.6-4-5.6-4-9s1.5-6.4 4-9z"/></svg>一键开服<b> tunnels</b></button>
+              <button class="qbtn" data-toast="服务器地址已复制（演示）">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>复制地址<b> play.nex</b></button>
+              <button class="qbtn" data-goto="res">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></svg>资源库<b> Modrinth</b></button>
+            </div>
+          </div>
+
+          <div class="widget w-res" data-id="resources" data-order="6">
+            <span class="drag-dot">✥</span>
+            <h3>我的资源</h3>
+            <div class="res-row">
+              <span class="res-tag" data-goto="mods">模组 · 5</span>
+              <span class="res-tag">整合包 · 1</span>
+              <span class="res-tag">资源包 · 2</span>
+              <span class="res-tag">光影包 · 0</span>
+              <span class="res-tag" data-goto="res">去逛 Modrinth →</span>
+            </div>
+          </div>
+
+          <div class="widget w-sec" data-id="security" data-order="7" data-click="security" title="点击进入安全防护">
+            <span class="drag-dot">✥</span>
+            <div class="shield">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v6c0 4.4 3 8 7 9 4-1 7-4.6 7-9V6l-7-3z"/><path d="m9 12 2 2 4-4"/></svg>
+            </div>
+            <div>
+              <h4>防护运行中</h4>
+              <div class="meta">五道防线 · 已守护 2 小时 53 分</div>
+              <div class="dots"><i></i><i></i><i></i><i></i><i></i></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="edit-bar" id="editBar">
+          <span>拖动卡片到任意位置，松手自动保存</span>
+          <button class="ebtn" id="btnReset">恢复默认布局</button>
+          <button class="ebtn done" id="btnDone">完成</button>
+        </div>
+      </section>
+
+      <!-- ======= 游戏版本 ======= -->
+      <section class="page" id="page-versions">
+        <div class="panel" style="margin-bottom:16px;display:flex;align-items:center;gap:14px">
+          <div style="flex:1">
+            <h2 style="margin-bottom:4px">已安装版本</h2>
+            <span style="font-size:12px;color:var(--muted)">游戏目录：C:\Users\吴\AppData\Roaming\.minecraft</span>
+          </div>
+          <button class="abtn primary" data-toast="已扫描本机启动器目录，发现 3 个可导入版本（演示）">导入本机版本</button>
+        </div>
+        <div class="panel">
+          <div class="ver-item">
+            <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg></div>
+            <div><b>Minecraft 1.21.11</b><div class="meta">原版 · 1.8 GB · 上次启动 12 分钟前</div></div>
+            <span class="now">当前版本</span>
+          </div>
+          <div class="ver-item">
+            <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/></svg></div>
+            <div><b>Fabric 0.16.9 + 1.21.11</b><div class="meta">模组加载器 · 挂载 5 个模组</div></div>
+          </div>
+          <div class="ver-item">
+            <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/></svg></div>
+            <div><b>Forge 52.0.24 + 1.21.1</b><div class="meta">模组加载器 · 链接导入自 PCL2 目录</div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ======= 账号 ======= -->
+      <section class="page" id="page-account">
+        <div class="grid2">
+          <div class="panel">
+            <div class="account-hero">
+              <div class="avatar"><i></i></div>
+              <div class="who">
+                <b>45t</b>
+                <div class="mode">离线账号 · Uuid 未绑定</div>
+                <div class="mode" style="color:var(--accent)">皮肤：默认 Steve</div>
+              </div>
+            </div>
+            <div class="acc-actions">
+              <button class="abtn primary" data-toast="皮肤库已打开（演示）">更换皮肤</button>
+              <button class="abtn" data-toast="已打开皮肤上传（演示）">上传皮肤</button>
+              <button class="abtn" data-toast="皮肤 3D 预览（演示）">3D 预览</button>
+            </div>
+          </div>
+          <div class="panel">
+            <h2>账号列表</h2>
+            <div class="ver-item"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></div>
+              <div><b>45t</b><div class="meta">离线账号 · 自动登录已开启</div></div><span class="now">使用中</span></div>
+            <div class="ver-item"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M2 10h20"/></svg></div>
+              <div><b>微软正版登录</b><div class="meta">支持 OAuth 设备码 / Web 登录</div></div></div>
+            <div class="ver-item"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v18M5 8l7-5 7 5v8l-7 5-7-5z"/></svg></div>
+              <div><b>外置登录（Authlib）</b><div class="meta">LittleSkin / 自建 Yggdrasil 服务器</div></div></div>
+            <button class="abtn primary" style="margin-top:6px" data-toast="添加账号（演示）">＋ 添加账号</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ======= 模组 / 资源（占位同风格） ======= -->
+      <section class="page" id="page-mods">
+        <div class="panel"><h2>模组管理 · 1.21.11</h2>
+          <div class="ver-item"><div class="ic">🧭</div><div><b>JEI 19.0.5</b><div class="meta">Modrinth · 6.2 MB · 已启用</div></div><span class="now">启用</span></div>
+          <div class="ver-item"><div class="ic">⚡</div><div><b>Sodium 0.6.0</b><div class="meta">Modrinth · 1.1 MB · 已启用</div></div><span class="now">启用</span></div>
+          <div class="ver-item"><div class="ic">🗺️</div><div><b>Xaero's Minimap</b><div class="meta">Modrinth · 3.4 MB · 已停用</div></div></div>
+        </div>
+      </section>
+      <section class="page" id="page-res">
+        <div class="res-hero">
+          <div class="res-search">
+            <div class="sbox">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <input id="resQ" placeholder="搜索模组、整合包、光影…（如： sodium / 工业时代）" />
+            </div>
+            <div class="seg" id="resSrc"><b class="on" data-s="modrinth">Modrinth</b><b data-s="curseforge">CurseForge</b></div>
+          </div>
+          <div class="res-filters">
+            <span class="chip on" data-t="mod">模组</span><span class="chip" data-t="modpack">整合包</span>
+            <span class="chip" data-t="resourcepack">资源包</span><span class="chip" data-t="shader">光影包</span>
+            <span class="chip" data-t="datapack">数据包</span>
+            <span class="sep"></span>
+            <select id="resLoader"><option value="">全部加载器</option><option value="fabric">Fabric</option><option value="forge">Forge</option><option value="neoforge">NeoForge</option><option value="quilt">Quilt</option></select>
+            <select id="resVer"><option value="">全部版本</option><option>1.21.11</option><option>1.21.1</option><option>1.20.1</option><option>1.19.2</option><option>1.18.2</option><option>1.16.5</option></select>
+            <select id="resSort"><option value="downloads">最多下载</option><option value="follows">最多关注</option><option value="newest">最新发布</option><option value="updated">最近更新</option><option value="relevance">相关度</option></select>
+            <span class="chip" id="resGo" style="background:var(--accent);color:#fff;border-color:var(--accent);font-weight:700">搜索</span>
+          </div>
+        </div>
+        <div class="mod-grid" id="resGrid"></div>
+        <button class="res-more" id="resMore" style="display:none">加载更多</button>
+        <div class="res-modal" id="resModal">
+          <div class="box" id="resBox"></div>
+        </div>
+      </section>
+
+      <!-- ======= 皮肤站 ======= -->
+      <section class="page" id="page-skins">
+        <div class="skin-bar">
+          <input class="skin-search" placeholder="搜索皮肤 / 作者…">
+          <button class="cat on">全部</button><button class="cat">英雄</button><button class="cat">反派</button>
+          <button class="cat">奇幻</button><button class="cat">科学</button><button class="cat">历史</button>
+          <button class="cat">漫画</button><button class="cat">角色</button><button class="cat">周末</button>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:9px;font-size:12px;color:var(--muted)">
+            屏蔽 18+ 内容 <div class="switch on" data-sw></div>
+          </div>
+        </div>
+        <div class="skin-grid" id="skinGrid"></div>
+        <div class="skin-foot">
+          <button class="abtn primary" data-toast="已打开本地皮肤文件选择（演示）">上传本地皮肤</button>
+          <button class="abtn" data-toast="已打开 %APPDATA%\.minecraft\skins（演示）">打开皮肤文件夹</button>
+          <button class="abtn" data-toast="正在打开 LittleSkin 皮肤站…">LittleSkin 皮肤站</button>
+          <button class="abtn" data-toast="正在打开 NameMC 皮肤查询…">NameMC 查询</button>
+          <span style="font-size:11.5px;color:var(--muted)">内置皮肤库 20 页 · 正版可直接上传，离线账号同样可用</span>
+        </div>
+      </section>
+
+      <!-- ======= 百宝箱 ======= -->
+      <section class="page" id="page-tools">
+        <div class="tool-sec">
+          <h3>运行环境</h3>
+          <div class="tool-grid">
+            <div class="tool" data-toast="Java 21 已就绪 · 路径 C:\Program Files\Java\jdk-21（演示）">
+              <div class="ic amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 8h1a3 3 0 0 1 0 6h-1"/><path d="M3 8h14v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8z"/><path d="M6 3v2M10 3v2M14 3v2"/></svg></div>
+              <div><b>Java 运行环境</b><span>Java 21 已安装 · 一键下载其它版本</span></div>
+            </div>
+            <div class="tool" data-toast="已打开 Java 安装目录（演示）">
+              <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A2 2 0 0 1 5 5.5h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-10z"/></svg></div>
+              <div><b>打开 Java 目录</b><span>查看已安装的 JDK / JRE</span></div>
+            </div>
+            <div class="tool" data-toast="正在优化内存分配（演示）">
+              <div class="ic green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20a8 8 0 1 1 8-8"/><path d="M12 12l4-4"/><path d="M20 12h-4v4"/></svg></div>
+              <div><b>内存优化</b><span>按本机内存推荐 Xmx 并释放占用</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tool-sec">
+          <h3>游戏维护</h3>
+          <div class="tool-grid">
+            <div class="tool" data-toast="正在备份全部存档 → .minecraft\backups（演示）">
+              <div class="ic purple"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M3 11h18"/><path d="M8 7V4.5A1.5 1.5 0 0 1 9.5 3h5A1.5 1.5 0 0 1 16 4.5V7"/></svg></div>
+              <div><b>存档管理</b><span>备份全部存档 · 一键恢复历史备份</span></div>
+            </div>
+            <div class="tool" data-toast="已扫描 crash-reports，未发现新的崩溃报告（演示）">
+              <div class="ic amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></div>
+              <div><b>崩溃报告</b><span>定位启动失败原因 · 分析 latest.log</span></div>
+            </div>
+            <div class="tool" data-toast="已清理 1.2 GB 游戏垃圾（演示）">
+              <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7"/><path d="M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13"/></svg></div>
+              <div><b>清理游戏垃圾</b><span>logs / crash-reports / 缓存文件</span></div>
+            </div>
+            <div class="tool" data-toast="已打开 mods 目录（演示）">
+              <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/></svg></div>
+              <div><b>打开 mods 目录</b><span>管理已安装模组与配置</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tool-sec">
+          <h3>基岩版与披风</h3>
+          <div class="tool-grid">
+            <div class="tool" data-toast="已检测到基岩版，正在启动（演示）">
+              <div class="ic green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg></div>
+              <div><b>启动基岩版</b><span>调用 minecraft:// 协议直接打开</span></div>
+            </div>
+            <div class="tool" data-toast="正在导入当前版本到基岩版（演示）">
+              <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></svg></div>
+              <div><b>导入到基岩版</b><span>把 Java 版皮肤 / 世界转过去</span></div>
+            </div>
+            <div class="tool" data-toast="正在获取披风列表…（演示）">
+              <div class="ic purple"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4"/><path d="M6 3v18"/></svg></div>
+              <div><b>披风管理</b><span>刷新列表 · 穿戴 / 关闭 · 手动导入</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tool-sec">
+          <h3>实用工具与站点</h3>
+          <div class="tool-grid">
+            <div class="tool" data-toast="输入下载地址即可保存到指定位置（演示）">
+              <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13"/><path d="m7 12 5 5 5-5"/><path d="M4 20h16"/></svg></div>
+              <div><b>下载任意文件</b><span>贴地址 → 选保存位置 → 开始下载</span></div>
+            </div>
+            <div class="tool" data-toast="正在打开 Modrinth…">
+              <div class="ic green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 4 5.6 4 9s-1.5 6.4-4 9c-2.5-2.6-4-5.6-4-9s1.5-6.4 4-9z"/></svg></div>
+              <div><b>Modrinth / CurseForge</b><span>模组资源站 · 内置镜像加速</span></div>
+            </div>
+            <div class="tool" data-toast="正在打开 MC 服务器列表…">
+              <div class="ic amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01"/></svg></div>
+              <div><b>服务器与合成表</b><span>官方服务器列表 · 合成表查询</span></div>
+            </div>
+            <div class="tool" data-toast="正在打开 MCIM 镜像站…">
+              <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16v12H4z"/><path d="M4 7l2-3h12l2 3"/><path d="M9 12h6"/></svg></div>
+              <div><b>MCIM 镜像站</b><span>国内镜像 · 加速下载游戏资源</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ======= 安全防护 ======= -->
+      <section class="page" id="page-security">
+        <div class="sec-hero">
+          <div class="sec-shield">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v6c0 4.4 3 8 7 9 4-1 7-4.6 7-9V6l-7-3z"/><path d="m9 12 2 2 4-4"/></svg>
+          </div>
+          <div style="flex:1;min-width:0">
+            <h2>防护运行中 <span class="chip-ok">24 小时自动防卫</span></h2>
+            <div class="meta">
+              守护进程 PID <b>11796</b> · 启动于 <b>20:57</b> · 最后心跳 <b>23:50:42</b>（已守护 2 小时 53 分）<br>
+              关闭启动器后防护仍在运行，下次登录 Windows 会自动开始
+            </div>
+          </div>
+          <div class="right">
+            <div class="live-chip"><i></i>实时监控中</div>
+            <div style="display:flex;align-items:center;gap:9px;font-size:12px;color:var(--muted)">
+              自动防卫 <div class="switch on" data-sw></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-bottom:16px">
+          <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v6c0 4.4 3 8 7 9 4-1 7-4.6 7-9V6l-7-3z"/></svg>五道防线</h2>
+          <div class="layer">
+            <div class="no">1</div>
+            <div class="txt"><b>下载防护 <span class="chip-ok">正常</span></b>
+              <p>模组 / 资源落地前扫描伪装文件 —— EXE 冒充 jar、脚本冒充资源包，威胁自动进隔离区</p></div>
+          </div>
+          <div class="layer">
+            <div class="no">2</div>
+            <div class="txt"><b>勒索蜜罐 <span class="chip-ok">5 个诱饵在位</span></b>
+              <p>桌面 / 文档 / 图片 / 游戏目录布置诱饵文件，被加密改动立即告警并自动还原</p></div>
+          </div>
+          <div class="layer">
+            <div class="no">3</div>
+            <div class="txt"><b>行为监控 <span class="chip-ok">正常</span></b>
+              <p>短时间大量文件改写（批量加密特征）立即报警</p></div>
+          </div>
+          <div class="layer">
+            <div class="no">4</div>
+            <div class="txt"><b>系统守护 <span class="chip-ok">基线已记录</span></b>
+              <p>hosts、注册表启动项、启动文件夹变更告警，防劫持防驻留</p></div>
+          </div>
+          <div class="layer">
+            <div class="no">5</div>
+            <div class="txt"><b>游戏防护 <span class="chip-ok">正常</span></b>
+              <p>mods / 插件 / 资源包伪装检测 + 启动参数注入检查</p></div>
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div class="panel">
+            <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M5 8l7-5 7 5v8l-7 5-7-5z"/></svg>勒索蜜罐 · 5 个诱饵</h2>
+            <div class="canary-row"><span class="k">01</span><span class="p" title="C:\Users\吴\Desktop\NEX防护诱饵_请勿删除.txt">桌面\NEX防护诱饵_请勿删除.txt</span><span class="s">完好</span></div>
+            <div class="canary-row"><span class="k">02</span><span class="p" title="C:\Users\吴\Documents\我的恢复密钥_备份_NEX.txt">文档\我的恢复密钥_备份_NEX.txt</span><span class="s">完好</span></div>
+            <div class="canary-row"><span class="k">03</span><span class="p" title="C:\Users\吴\Pictures\账号密码本_NEX勿动.txt">图片\账号密码本_NEX勿动.txt</span><span class="s">完好</span></div>
+            <div class="canary-row"><span class="k">04</span><span class="p" title="C:\Users\吴\AppData\Roaming\.minecraft\重要文件勿删_NEX.txt">.minecraft\重要文件勿删_NEX.txt</span><span class="s">完好</span></div>
+            <div class="canary-row" style="margin-bottom:0"><span class="k">05</span><span class="p" title="C:\Users\吴\AppData\Local\wallet_backup_nex.txt">AppData\Local\wallet_backup_nex.txt</span><span class="s">完好</span></div>
+            <div style="font-size:11px;color:var(--muted);margin-top:12px;line-height:1.7">
+              诱饵不含任何真实数据，只作为勒索软件的“触发器”。被改动时 NEX 会立即告警并还原。
+            </div>
+          </div>
+
+          <div>
+            <div class="panel" style="margin-bottom:16px">
+              <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></svg>安全事件日志</h2>
+              <div class="log-row">
+                <span class="t">11-02 12:25:39</span>
+                <div class="body"><b>蜜罐文件被篡改！疑似勒索软件正在加密你的文件 <span class="chip-bad">严重</span></b>
+                  <span>第二道 · 勒索蜜罐 · 已自动还原诱饵文件以便持续监测，建议立即断网检查可疑进程</span></div>
+              </div>
+              <div class="log-row">
+                <span class="t">11-02 12:25:39</span>
+                <div class="body"><b>已隔离威胁文件 evil.jar <span class="chip-warn">警告</span></b>
+                  <span>隔离区 · MZ 头冒充 jar 文件，原位置 Temp\nex-sec-test-122539</span></div>
+              </div>
+              <div class="log-row">
+                <span class="t">11-02 12:23:27</span>
+                <div class="body"><b>已隔离威胁文件 evil.jar <span class="chip-warn">警告</span></b>
+                  <span>隔离区 · 自测：MZ 冒充 jar，原位置 Temp\nex-sec-test-122327</span></div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16v13H4z"/><path d="M9 7V4h6v3"/></svg>隔离区 · 1 个文件</h2>
+              <div class="canary-row" style="margin-bottom:0">
+                <span class="k" style="color:#F87171;background:rgba(248,113,113,.14)">威胁</span>
+                <span class="p" title="quarantine\evil.jar.20261102-122539.quar">evil.jar（MZ 冒充 jar）</span>
+                <span class="s" style="color:var(--muted)">可恢复 / 彻底删除</span>
+              </div>
+              <div style="display:flex;gap:9px;margin-top:12px">
+                <button class="abtn" data-toast="已恢复该文件到原位置（演示）">恢复</button>
+                <button class="abtn" data-toast="已彻底删除该威胁文件（演示）">彻底删除</button>
+                <button class="abtn primary" style="margin-left:auto" data-toast="正在体检：扫描 mods / 插件 / 资源包与启动参数…（演示）">立即体检</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-settings">
+        <div class="grid2">
+          <div class="panel">
+            <h2>主题预设</h2>
+            <div class="theme-grid" id="themeGrid"></div>
+          </div>
+          <div class="panel">
+            <h2>游戏与启动</h2>
+            <div class="set-row"><div class="lbl">最大内存<span>当前 4096 MB</span></div><input type="range" min="1024" max="8192" step="512" value="4096" id="ramRange"></div>
+            <div class="set-row"><div class="lbl">下载镜像加速<span>使用国内镜像下载资源</span></div><div class="switch on" data-sw></div></div>
+            <div class="set-row"><div class="lbl">版本隔离<span>每个版本独立存档与配置</span></div><div class="switch on" data-sw></div></div>
+            <div class="set-row"><div class="lbl">自动检查更新<span>更新源：jsDelivr 公开仓库</span></div><div class="switch on" data-sw></div></div>
+            <div class="set-row"><div class="lbl">关闭到托盘<span>点关闭按钮最小化到托盘</span></div><div class="switch" data-sw></div></div>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="panel">
+            <h2>个性化</h2>
+            <div class="set-row"><div class="lbl">浅色模式（白底）<span>Verse 风格 · 关闭后为深色</span></div><div class="switch on" id="swLight"></div></div>
+            <div class="set-row"><div class="lbl">背景图片<span>应用到全部页面</span></div><div class="bg-chips" id="bgChips"></div></div>
+            <div class="set-row"><div class="lbl">背景遮罩浓度<span id="maskVal">35%</span></div><input type="range" min="0" max="80" step="5" value="35" id="maskRange"></div>
+            <div class="set-row"><div class="lbl">背景模糊<span>毛玻璃质感</span></div><div class="switch" id="swBlur"></div></div>
+          </div>
+          <div class="panel">
+            <h2>联系我们</h2>
+            <div class="contact-card">
+              <div class="contact-ico">QQ</div>
+              <div class="contact-txt"><b>官方 QQ 频道</b><span>反馈 bug、问题与建议，加入后点开「问题反馈」版块即可发帖</span></div>
+              <button class="contact-btn" id="btnQQ">加入频道</button>
+            </div>
+            <div class="contact-tip">发帖时附上截图与启动器日志（设置 → 打开日志目录），问题会被更快定位处理。</div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 手机底部导航 ============ -->
+<nav class="tabbar" id="tabbar">
+  <div class="ti on" data-page="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>首页</div>
+  <div class="ti" data-page="versions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg>版本</div>
+  <div class="ti" data-page="skins"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c3 0 5 2 5 5v3l-2 1v6H9v-6l-2-1V8c0-3 2-5 5-5z"/><path d="M9.5 8.5h.01M14.5 8.5h.01"/></svg>皮肤</div>
+  <div class="ti" data-page="tools"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="11" rx="2.5"/><path d="M3 13h18"/><path d="M8 9V6.5A2.5 2.5 0 0 1 10.5 4h3A2.5 2.5 0 0 1 16 6.5V9"/></svg>百宝箱</div>
+  <div class="ti" data-page="security"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v6c0 4.4 3 8 7 9 4-1 7-4.6 7-9V6l-7-3z"/><path d="m9 12 2 2 4-4"/></svg>防护</div>
+  <div class="ti" data-page="account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>我的</div>
+</nav>
+
+<!-- ============ 手机预览 ============ -->
+<div class="phone-wrap" id="phoneWrap">
+  <div class="phone"><div class="notch"></div><div class="app" id="phoneApp"></div></div>
+  <div class="phone-close" id="phoneClose">✕</div>
+</div>
+
+<div class="toast" id="toast">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+  <span id="toastMsg"></span>
+</div>
+
+<script>
+/* ================= NEX 原生桥（WebView2） ================= */
+const NEX_BRIDGE = (window.chrome && window.chrome.webview) ? window.chrome.webview : null;
+const NEX_APP = !!NEX_BRIDGE;
+/* PWA：浏览器/手机/Capacitor 环境下注册离线缓存（WebView2 内不需要） */
+if (!NEX_APP && "serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
+  try { navigator.serviceWorker.register("sw.js").catch(()=>{}); } catch(e){}
+}
+function nexPost(obj){ try { if(NEX_BRIDGE) NEX_BRIDGE.postMessage(obj); } catch(e){} }
+/* 需要启动器真实功能的页面 → 交给原生 WPF 页面渲染 */
+const NATIVE_PAGES = ["versions","mods","account","settings"];
+function nexGoNative(page){
+  if(NEX_APP){ nexPost({cmd:"nav", page}); }
+  else { toast("此功能需要启动器本体（当前是浏览器预览）"); }
+}
+</script>
+
+<script>
+/* ================= 主题（UiPalette 真实预设） ================= */
+const THEMES = {
+  "熔光":  ["#020817","#060C18","#0B1220","#141E32","#1E293B","#F6A82A","#F8FAFC","#CBD5E1","#94A3B8","#A8B4C4"],
+  "深蓝":  ["#030A15","#071120","#0C1626","#152238","#1E3050","#4C9AFF","#F1F5F9","#CBD5E1","#8FA3BE","#A6B7CC"],
+  "暗夜黑":["#070809","#0D0F11","#14171A","#1E2226","#2A2F35","#4ECB73","#EFF2F4","#C8D0D6","#8A939B","#A2ABB3"],
+  "紫罗兰":["#0A0714","#120D22","#171029","#231A3C","#332A4E","#B06BFF","#F3EFFB","#D6CAEA","#9887B5","#B0A0C9"],
+  "翡翠绿":["#04100D","#081813","#0C1F19","#143028","#1E4034","#22D3A6","#E8F7F2","#C4E4D9","#7DA396","#95B8AB"],
+  "暖橙":  ["#120C06","#1A130A","#221809","#302313","#3D2C17","#FFB340","#FAF3E6","#E3D3B8","#A3906F","#BBA98A"],
+};
+const KEYS = ["bg","header","surface","surface-alt","border","accent","text","text-dim","muted","muted-light"];
+let curTheme = localStorage.getItem("nex.ui.theme") || "深蓝";
+let curMode  = localStorage.getItem("nex.ui.mode") || "light";   // 默认浅色（Verse 白底）
+function applyTheme(name){
+  const t = THEMES[name]; if(!t) return;
+  if (curMode === "light"){
+    /* 浅色模式：颜色由 CSS 按 --accent 派生，这里只同步强调色 */
+    document.documentElement.style.setProperty("--accent", t[5]);
+  } else {
+    KEYS.forEach((k,i)=>document.documentElement.style.setProperty("--"+k, t[i]));
+  }
+  localStorage.setItem("nex.ui.theme", name); curTheme = name;
+  document.querySelectorAll(".theme-sw").forEach(el=>el.classList.toggle("on", el.dataset.t===name));
+}
+function setMode(m){
+  curMode = m; localStorage.setItem("nex.ui.mode", m);
+  document.body.dataset.mode = m;
+  const sw = document.getElementById("swLight");
+  if (sw) sw.classList.toggle("on", m === "light");
+  applyTheme(curTheme);
+}
+/* 设置页主题网格 */
+const tg = document.getElementById("themeGrid");
+Object.keys(THEMES).forEach(name=>{
+  const [bg,,sur,,bd,acc] = THEMES[name];
+  const d = document.createElement("div");
+  d.className = "theme-sw"; d.dataset.t = name;
+  d.innerHTML = `<div class="ball" style="background:linear-gradient(135deg,${bg} 30%,${acc});border:1px solid ${bd}"></div><span>${name}</span>`;
+  d.onclick = ()=>{ applyTheme(name); toast(`已切换主题：${name}`); nexPost({cmd:"theme", name}); };
+  tg.appendChild(d);
+});
+/* —— 个性化：外观模式 / 背景图 —— */
+const bgLayer = document.getElementById("bgLayer");
+const bgMask  = document.getElementById("bgMask");
+const BG_PRESETS = {
+  none:  {name:"无"},
+  aurora:{name:"极光", css:"linear-gradient(135deg,#0F2027 0%,#2C5364 52%,#1A2980 100%)"},
+  sunset:{name:"晚霞", css:"linear-gradient(135deg,#355C7D 0%,#C06C84 60%,#F67280 100%)"},
+  forest:{name:"深林", css:"linear-gradient(135deg,#0B3D2E 0%,#137A5F 62%,#63D471 135%)"}
+};
+let bgKey    = localStorage.getItem("nex.ui.bg") || "none";
+let bgCustom = localStorage.getItem("nex.ui.bg.custom") || "";
+let bgBlur   = localStorage.getItem("nex.ui.bg.blur") === "1";
+let maskOp   = parseFloat(localStorage.getItem("nex.ui.mask") || "0.35");
+
+function bgSource(){
+  if (bgKey === "custom") return bgCustom;
+  const p = BG_PRESETS[bgKey];
+  return p && p.css ? p.css : "";
+}
+function applyPersonalize(){
+  document.body.dataset.mode = curMode;
+  const src = bgSource();
+  if (src){
+    if (bgKey === "custom") bgLayer.style.background = `#000 url("${src}") center/cover no-repeat`;
+    else bgLayer.style.background = src;
+    bgLayer.style.display = "block"; bgMask.style.display = "block";
+  } else { bgLayer.style.display = "none"; bgMask.style.display = "none"; }
+  bgLayer.classList.toggle("blur", bgBlur);
+  bgMask.style.opacity = src ? maskOp : 0;
+  document.getElementById("maskVal").textContent = Math.round(maskOp*100) + "%";
+  document.getElementById("maskRange").value = Math.round(maskOp*100);
+  document.getElementById("swBlur").classList.toggle("on", bgBlur);
+  document.getElementById("swLight").classList.toggle("on", curMode === "light");
+  document.querySelectorAll(".bg-chip").forEach(c => c.classList.toggle("on", c.dataset.bg === bgKey));
+}
+const bgChips = document.getElementById("bgChips");
+Object.keys(BG_PRESETS).forEach(k=>{
+  const c = document.createElement("div");
+  c.className = "bg-chip"; c.dataset.bg = k; c.textContent = BG_PRESETS[k].name;
+  c.onclick = ()=>{ bgKey = k; localStorage.setItem("nex.ui.bg", k); applyPersonalize(); };
+  bgChips.appendChild(c);
+});
+const cCustom = document.createElement("div");
+cCustom.className = "bg-chip"; cCustom.dataset.bg = "custom"; cCustom.textContent = "自定义…";
+cCustom.onclick = ()=>{
+  const inp = document.createElement("input");
+  inp.type = "file"; inp.accept = "image/*";
+  inp.onchange = ()=>{
+    const f = inp.files[0]; if(!f) return;
+    const rd = new FileReader();
+    rd.onload = ()=>{
+      const img = new Image();
+      img.onload = ()=>{
+        /* 压到 1920 宽再存，避免超出 localStorage */
+        const sc = Math.min(1, 1920 / img.width);
+        const cv = document.createElement("canvas");
+        cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
+        cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+        try {
+          bgCustom = cv.toDataURL("image/jpeg", 0.82);
+          localStorage.setItem("nex.ui.bg.custom", bgCustom);
+          bgKey = "custom"; localStorage.setItem("nex.ui.bg", "custom");
+          applyPersonalize(); toast("背景已更新");
+        } catch(e){ toast("图片过大，换一张试试"); }
+      };
+      img.src = rd.result;
+    };
+    rd.readAsDataURL(f);
+  };
+  inp.click();
+};
+bgChips.appendChild(cCustom);
+document.getElementById("maskRange").oninput = e=>{
+  maskOp = e.target.value / 100;
+  localStorage.setItem("nex.ui.mask", maskOp); applyPersonalize();
+};
+document.getElementById("swBlur").onclick = ()=>{
+  bgBlur = !bgBlur; localStorage.setItem("nex.ui.bg.blur", bgBlur ? "1" : "0"); applyPersonalize();
+};
+document.getElementById("swLight").onclick = ()=> setMode(curMode === "light" ? "dark" : "light");
+
+/* —— 联系我们 · QQ 频道 —— */
+const QQ_CHANNEL_URL = "";   /* ← 在这里粘贴你的 QQ 频道邀请链接（形如 https://pd.qq.com/s/xxxx） */
+function openQQChannel(){
+  if (!QQ_CHANNEL_URL){ toast("频道链接待配置：把 pd.qq.com 邀请链接发给开发者即可接入"); return; }
+  toast("正在打开 QQ 频道…");
+  if (window.chrome && chrome.webview)
+    chrome.webview.postMessage(JSON.stringify({cmd:"open-url", url:QQ_CHANNEL_URL}));
+  else window.open(QQ_CHANNEL_URL, "_blank");
+}
+document.getElementById("btnQQ").onclick = openQQChannel;
+document.getElementById("navContact").onclick = openQQChannel;
+
+setMode(curMode);
+applyPersonalize();
+
+/* ================= 页面路由 ================= */
+const TITLES = {home:["开始页面","自由拖拽，定制你的主页"],versions:["游戏版本","已安装 3 个版本"],
+  mods:["模组管理","1.21.11 · Fabric"],res:["资源下载","全网资源 · 一键下载"],
+  skins:["皮肤站","9 个角色 · 20 页皮肤库"],tools:["百宝箱","运行环境 · 存档 · 基岩版 · 披风"],
+  security:["安全防护","五道防线 · 24 小时自动防卫"],
+  account:["账号","45t · 离线模式"],settings:["设置","主题 · 内存 · 网络"]};
+function goto(page){
+  /* 版本 / 模组 / 资源 / 账号 / 设置：直接切到原生页面，功能 100% 不变 */
+  if(NEX_APP && NATIVE_PAGES.includes(page)){ nexGoNative(page); return; }
+  document.querySelectorAll(".page").forEach(p=>p.classList.toggle("on", p.id==="page-"+page));
+  document.querySelectorAll(".nav-item,.ti").forEach(n=>n.classList.toggle("on", n.dataset.page===page));
+  document.getElementById("pageTitle").textContent = TITLES[page][0];
+  document.getElementById("pageSub").textContent = TITLES[page][1];
+  if(page!=="home") exitEdit();
+  syncPhone();
+}
+document.querySelectorAll("[data-page]").forEach(el=>el.addEventListener("click",()=>goto(el.dataset.page)));
+document.querySelectorAll("[data-goto]").forEach(el=>el.addEventListener("click",e=>{e.stopPropagation();goto(el.dataset.goto)}));
+document.querySelectorAll("[data-toast]").forEach(el=>el.addEventListener("click",e=>{e.stopPropagation();toast(el.dataset.toast)}));
+
+/* ================= 资源下载（Modrinth 实时搜索 + 离线兜底） ================= */
+const resState = { q:"", type:"mod", loader:"", ver:"", sort:"downloads", page:1, hits:[], busy:false, offline:false };
+const RES_FALLBACK = [
+  {title:"Sodium", author:"jellysquid3", description:"现代化渲染优化模组，大幅提升帧率并降低卡顿，是 Fabric 玩家的必备性能补丁。", downloads:4820000, follows:32000, categories:["fabric","performance"], icon_url:""},
+  {title:"Create 工艺乐事", author:"simibubi", description:"以旋转动力为核心的机械模组：齿轮、传送带、蒸汽机车，把自动化工厂搬进存档。", downloads:3950000, follows:41000, categories:["forge","adventure"], icon_url:""},
+  {title:"JEI 物品管理器", author:"mezz", description:"查看任意物品的合成配方与用途，全模组兼容的配方查询核心组件。", downloads:9870000, follows:28000, categories:["forge","fabric","utility"], icon_url:""},
+  {title:"Complementary Shaders", author:"EminGT", description:"兼顾性能与画质的顶级光影：体积云、水面反射、柔和阴影一键调节。", downloads:2140000, follows:19000, categories:["shader"], icon_url:""},
+  {title:"TerraFirmaCraft", author:"dries007", description:"硬核生存重构：地质年代、温度、季节与营养系统，重新认识这个世界。", downloads:860000, follows:12000, categories:["forge","hardcore"], icon_url:""},
+  {title:"Distant Horizons", author:"James Seibel", description:"LOD 远景渲染，低开销看到数百格外的世界，与光影完美兼容。", downloads:1520000, follows:22000, categories:["fabric","forge"], icon_url:""}
+];
+const PH_COLORS = [["#4C9AFF","#1E4C8F"],["#B06BFF","#4E1E8F"],["#22D3A6","#0B5F4B"],["#F6A82A","#8F5A0E"],["#FF6B8B","#8F1E3C"],["#5AC8FA","#1B5F8F"]];
+function esc(x){ return String(x==null?"":x).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c])); }
+function fmtN(x){ x = +x||0; return x>=1e6?(x/1e6).toFixed(1)+"M":x>=1e3?(x/1e3).toFixed(1)+"k":String(x); }
+function phIco(title, i){
+  const [a,b] = PH_COLORS[i % PH_COLORS.length];
+  const ch = esc((title||"?").trim().charAt(0).toUpperCase());
+  return `<div class="mod-ico-ph" style="background:linear-gradient(135deg,${a},${b})">${ch}</div>`;
+}
+function cardHTML(h, i){
+  const tags = (h.categories||[]).filter(c=>["fabric","forge","neoforge","quilt"].includes(c)).slice(0,2)
+    .map(c=>`<i>${esc(c)}</i>`).join("");
+  return `<div class="mod-card" data-i="${i}">
+    <div class="mod-head">
+      ${h.icon_url ? `<img class="mod-ico" src="${esc(h.icon_url)}" loading="lazy"
+        onerror="this.outerHTML=phIco('${esc(h.title).replace(/'/g,"")}',${i})">` : phIco(h.title, i)}
+      <div style="min-width:0">
+        <div class="mod-name">${esc(h.title)}</div>
+        <div class="mod-author">${esc(h.author)}</div>
+      </div>
+    </div>
+    <div class="mod-intro">${esc(h.description)}</div>
+    <div class="mod-foot">
+      <span class="stat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></svg>${fmtN(h.downloads)}</span>
+      <span class="stat"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21C7 16.5 3 13.2 3 9.1 3 6.3 5.2 4 8 4c1.6 0 3 .8 4 2 1-1.2 2.4-2 4-2 2.8 0 5 2.3 5 5.1 0 4.1-4 7.4-9 11.9z"/></svg>${fmtN(h.follows)}</span>
+      <span class="mod-tags">${tags}</span>
+    </div>
+  </div>`;
+}
+function resSkeleton(k){
+  const g = document.getElementById("resGrid");
+  g.innerHTML = "";
+  for(let i=0;i<k;i++){
+    const d = document.createElement("div"); d.className = "skel-card";
+    d.innerHTML = `<div style="display:flex;gap:11px"><div class="skel" style="width:52px;height:52px;border-radius:14px"></div>
+      <div style="flex:1"><div class="skel" style="height:14px;width:70%"></div><div class="skel" style="height:10px;width:40%;margin-top:8px"></div></div></div>
+      <div class="skel" style="height:56px"></div><div class="skel" style="height:10px;width:55%"></div>`;
+    g.appendChild(d);
+  }
+}
+async function resSearch(reset){
+  if (resState.busy) return;
+  if (reset){ resState.page = 1; resSkeleton(6); }
+  resState.busy = true;
+  document.getElementById("resMore").style.display = "none";
+  const facets = [[`project_type:${resState.type}`]];
+  if (resState.loader) facets.push([`categories:${resState.loader}`]);
+  if (resState.ver)    facets.push([`versions:${resState.ver}`]);
+  const url = "https://api.modrinth.com/v2/search?limit=20&index=" + resState.sort +
+    "&offset=" + ((resState.page-1)*20) +
+    "&query=" + encodeURIComponent(resState.q) +
+    "&facets=" + encodeURIComponent(JSON.stringify(facets));
+  let hits = null;
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(9000) });
+    if (!r.ok) throw 0;
+    hits = (await r.json()).hits;
+    resState.offline = false;
+  } catch(e){ hits = null; }
+  if (!hits){
+    resState.offline = true;
+    hits = RES_FALLBACK.filter(h =>
+      (resState.type === "mod"   ? true : (h.categories||[]).includes(resState.type)) &&
+      (!resState.loader || (h.categories||[]).includes(resState.loader)));
+    if (reset){
+      const tip = document.createElement("div");
+      tip.className = "res-empty"; tip.style.gridColumn = "1/-1";
+      tip.textContent = "当前网络无法访问 Modrinth，展示内置推荐（联网后自动恢复实时搜索）";
+      document.getElementById("resGrid").appendChild(tip);
+    }
+  }
+  resState.hits = reset ? hits : resState.hits.concat(hits);
+  const g = document.getElementById("resGrid");
+  resState.hits.forEach((h,i)=>{
+    const w = document.createElement("div"); w.innerHTML = cardHTML(h, i);
+    g.appendChild(w.firstElementChild);
+  });
+  g.querySelectorAll(".mod-card").forEach(c=>c.onclick = ()=>resDetail(+c.dataset.i));
+  document.getElementById("resMore").style.display = (!resState.offline && hits.length===20) ? "block" : "none";
+  resState.busy = false;
+}
+function resDetail(i){
+  const h = resState.hits[i]; if(!h) return;
+  const slug = h.slug || h.project_id || "";
+  const page = "https://modrinth.com/" + (h.project_type||"mod") + "/" + slug;
+  const tags = (h.categories||[]).slice(0,6).map(c=>`<i style="font-style:normal;font-size:11px;padding:3px 9px;border-radius:7px;background:color-mix(in srgb,var(--accent) 13%,transparent);color:var(--accent);font-weight:600">${esc(c)}</i>`).join(" ");
+  document.getElementById("resBox").innerHTML = `
+    ${h.icon_url ? `<img class="banner" src="${esc(h.icon_url)}" onerror="this.style.display='none'">` : `<div class="banner" style="background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 40%,#000))"></div>`}
+    <h3>${esc(h.title)}</h3>
+    <div class="meta-row"><span>作者 ${esc(h.author)}</span><span>下载 ${fmtN(h.downloads)}</span><span>关注 ${fmtN(h.follows)}</span>${h.date_modified?`<span>更新 ${esc(String(h.date_modified).slice(0,10))}</span>`:""}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${tags}</div>
+    <div class="desc">${esc(h.description)}</div>
+    <div class="actions">
+      <button class="dl" id="resDl">前往下载页</button>
+      <button class="gh" id="resCp">复制链接</button>
+      <button class="gh" id="resX">关闭</button>
+    </div>`;
+  document.getElementById("resModal").classList.add("show");
+  document.getElementById("resDl").onclick = ()=>openExternal(page);
+  document.getElementById("resCp").onclick = ()=>{ try{ navigator.clipboard.writeText(page); toast("链接已复制"); }catch(e){} };
+  document.getElementById("resX").onclick = closeResModal;
+}
+function closeResModal(){ document.getElementById("resModal").classList.remove("show"); }
+function openExternal(url){
+  if (window.chrome && chrome.webview) chrome.webview.postMessage(JSON.stringify({cmd:"open-url", url}));
+  else window.open(url, "_blank");
+}
+document.getElementById("resModal").addEventListener("click", e=>{ if(e.target.id==="resModal") closeResModal(); });
+document.querySelectorAll("#resSrc b").forEach(b=>b.onclick = ()=>{
+  if (b.dataset.s !== "modrinth"){ toast("CurseForge 镜像接入中，先逛 Modrinth 全量资源"); return; }
+  document.querySelectorAll("#resSrc b").forEach(x=>x.classList.toggle("on", x===b));
+});
+document.querySelectorAll(".res-filters .chip[data-t]").forEach(c=>c.onclick = ()=>{
+  resState.type = c.dataset.t;
+  document.querySelectorAll(".res-filters .chip[data-t]").forEach(x=>x.classList.toggle("on", x===c));
+  resSearch(true);
+});
+document.getElementById("resGo").onclick = ()=>{
+  resState.q = document.getElementById("resQ").value.trim();
+  resState.loader = document.getElementById("resLoader").value;
+  resState.ver = document.getElementById("resVer").value;
+  resState.sort = document.getElementById("resSort").value;
+  resSearch(true);
+};
+document.getElementById("resQ").addEventListener("keydown", e=>{ if(e.key==="Enter") document.getElementById("resGo").click(); });
+document.getElementById("resMore").onclick = ()=>{ resState.page++; resSearch(false); };
+resSearch(true);
+
+/* ================= 手机版判定 ================= */
+function syncPhone(){
+  const pw = document.getElementById("phoneWrap");
+  if(!pw.classList.contains("show")) return;
+  const app = document.getElementById("app").cloneNode(true);
+  app.removeAttribute("id");
+  const host = document.getElementById("phoneApp");
+  host.innerHTML = ""; host.appendChild(app);
+  host.querySelectorAll("[data-page]").forEach(el=>el.addEventListener("click",()=>goto2(app,el.dataset.page)));
+}
+function goto2(scope,page){
+  scope.querySelectorAll(".page").forEach(p=>p.classList.toggle("on", p.id==="page-"+page));
+  scope.querySelectorAll(".nav-item,.ti").forEach(n=>n.classList.toggle("on", n.dataset.page===page));
+}
+const phoneWrap = document.getElementById("phoneWrap");
+document.getElementById("btnPhone").onclick = ()=>{
+  phoneWrap.classList.add("show");
+  document.body.classList.add("is-mobile");   // 预览框内启用手机版布局
+  syncPhone();
+};
+document.getElementById("phoneClose").onclick = closePhone;
+phoneWrap.addEventListener("click",e=>{ if(e.target===phoneWrap) closePhone() });
+function closePhone(){
+  phoneWrap.classList.remove("show");
+  checkMobile();                              // 按真实窗口宽度恢复布局
+}
+function checkMobile(){
+  if(phoneWrap.classList.contains("show")) return;  // 预览中保持手机布局
+  document.body.classList.toggle("is-mobile", window.innerWidth<=760);
+}
+window.addEventListener("resize",checkMobile); checkMobile();
+
+/* ================= 编辑模式 ================= */
+const canvas = document.getElementById("canvas"),
+      editBar = document.getElementById("editBar"),
+      btnEdit = document.getElementById("btnEdit");
+let editing = false;
+function enterEdit(){ editing=true; canvas.classList.add("editing"); editBar.classList.add("show"); btnEdit.classList.add("active"); }
+function exitEdit(){ editing=false; canvas.classList.remove("editing"); editBar.classList.remove("show"); btnEdit.classList.remove("active"); }
+btnEdit.onclick = ()=> editing ? exitEdit() : enterEdit();
+document.getElementById("btnDone").onclick = exitEdit;
+document.getElementById("btnReset").onclick = ()=>{
+  localStorage.removeItem("nex.ui.home.v1");
+  document.querySelectorAll(".widget").forEach(w=>place(w, DEFAULT_POS[w.dataset.id]));
+  toast("已恢复默认布局");
+};
+
+/* ================= 自由拖拽（Verse 式） ================= */
+const DEFAULT_POS = { profile:{x:4,y:6}, launch:{x:4,y:42}, stats:{x:38,y:42},
+                      news:{x:38,y:6}, quick:{x:73,y:6}, resources:{x:73,y:42},
+                      security:{x:4,y:76} };
+const STORE = "nex.ui.home.v1";
+let positions = {};
+try{ positions = JSON.parse(localStorage.getItem(STORE)||"{}") }catch(e){ positions={} }
+
+function place(w,p){ w.style.left=p.x+"%"; w.style.top=p.y+"%"; }
+function layout(){
+  document.querySelectorAll(".widget").forEach(w=>{
+    const id=w.dataset.id;
+    if(positions[id]) place(w,positions[id]); else place(w,DEFAULT_POS[id]);
+  });
+}
+layout();
+
+const gv=document.getElementById("gv"), gh=document.getElementById("gh");
+let drag=null;
+document.querySelectorAll(".widget").forEach(w=>{
+  w.addEventListener("pointerdown", e=>{
+    if(e.target.closest("button")) return;            // 按钮不触发拖拽
+    if(document.body.classList.contains("is-mobile")) return;
+    const r=canvas.getBoundingClientRect();
+    drag={w, sx:e.clientX, sy:e.clientY, ox:e.clientX-r.left, oy:e.clientY-r.top,
+          moved:false, r};
+    w.setPointerCapture(e.pointerId);
+  });
+});
+canvas.addEventListener("pointermove", e=>{
+  if(!drag) return;
+  const dx=e.clientX-drag.sx, dy=e.clientY-drag.sy;
+  if(!drag.moved && Math.hypot(dx,dy)<6) return;      // 6px 内视为点击
+  drag.moved=true; drag.w.classList.add("dragging");
+  const r=drag.r, ww=drag.w.offsetWidth, wh=drag.w.offsetHeight;
+  let px=Math.min(Math.max(e.clientX-r.left-ww/2, 4), r.width-ww-4);
+  let py=Math.min(Math.max(e.clientY-r.top-wh/2, 4), r.height-wh-4);
+  // 居中对齐吸附
+  const cx=px+ww/2, cy=py+wh/2, snap=14;
+  gv.classList.toggle("show", Math.abs(cx-r.width/2)<snap);
+  gh.classList.toggle("show", Math.abs(cy-r.height/2)<snap);
+  drag.w.style.left=px+"px"; drag.w.style.top=py+"px";
+});
+canvas.addEventListener("pointerup", e=>{
+  if(!drag) return;
+  const w=drag.w; w.classList.remove("dragging");
+  gv.classList.remove("show"); gh.classList.remove("show");
+  if(drag.moved){
+    const r=drag.r;
+    let x=w.offsetLeft, y=w.offsetTop;
+    if(Math.abs(x+w.offsetWidth/2 - r.width/2)<14)  x=(r.width-w.offsetWidth)/2;   // 吸附水平居中
+    if(Math.abs(y+w.offsetHeight/2 - r.height/2)<14) y=(r.height-w.offsetHeight)/2; // 吸附垂直居中
+    positions[w.dataset.id]={x:+(x/r.width*100).toFixed(2), y:+(y/r.height*100).toFixed(2)};
+    place(w,positions[w.dataset.id]);
+    localStorage.setItem(STORE, JSON.stringify(positions));
+  }else{
+    /* —— 未拖动 = 点击 —— */
+    const target = w.dataset.click || (w.dataset.id === "profile" ? "account" : null);
+    if(target) goto(target);                                // 点头像 → 账号页；点防护卡 → 安全防护页
+  }
+  drag=null;
+});
+canvas.addEventListener("pointercancel", ()=>{ if(drag){drag.w.classList.remove("dragging");drag=null;} });
+
+/* ================= 启动按钮（真实启动） ================= */
+const btnLaunch=document.getElementById("btnLaunch"), prog=document.getElementById("prog");
+let launching=false, launchTimer=null;
+
+function setLaunchLabel(text){
+  /* 只改文本节点，保留 <i class="prog"> 进度层 */
+  for(const n of btnLaunch.childNodes){
+    if(n.nodeType===3 && n.nodeValue.trim()){ n.nodeValue=" "+text+" "; return; }
+  }
+  btnLaunch.insertBefore(document.createTextNode(text), btnLaunch.firstChild);
+}
+function launchAnimStart(ver){
+  launching=true; btnLaunch.classList.add("busy"); setLaunchLabel("正在启动 "+ver+" …");
+  let p=0; clearInterval(launchTimer);
+  launchTimer=setInterval(()=>{
+    p+=Math.random()*11; prog.style.setProperty("--p",Math.min(p,92)+"%");
+    if(p>=92) clearInterval(launchTimer);
+  },160);
+}
+function launchAnimDone(ok,msg,ver){
+  clearInterval(launchTimer); launching=false;
+  const finish=()=>{ btnLaunch.classList.remove("busy"); setLaunchLabel("启 动 游 戏");
+                     prog.style.setProperty("--p","0%");
+                     toast(ok ? ("Minecraft "+ver+" 已启动") : ("启动失败："+msg)); };
+  ok ? setTimeout(finish,600) : finish();
+}
+btnLaunch.addEventListener("click",()=>{
+  if(launching) return;
+  const ver=(NEX_STATE.selected||"").trim();
+  if(!ver){
+    toast("没有已安装的游戏版本，先去下载一个");
+    if(NEX_APP) nexGoNative("versions");
+    return;
+  }
+  if(!NEX_APP){ toast("浏览器预览模式：启动游戏需要启动器本体"); return; }
+  launchAnimStart(ver);
+  nexPost({cmd:"launch", version:ver});
+});
+
+/* ================= Toast ================= */
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById("toast");
+  document.getElementById("toastMsg").textContent=msg;
+  t.classList.add("show"); clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove("show"),2600);
+}
+
+/* ================= 皮肤站 ================= */
+const SKIN_IMG = {"steve": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEgAAABICAYAAABV7bNHAAABeklEQVR42u3cPUvDUBjF8Vu5SaxWo4Pi4qaDi4Mv4KR1dHASQVxd3AU/hOCuuLsUByfBSbqIi0gXQUdnwdgkfUlBP0E4GW5FyP/Mh5vw47nwkEIrqwvTP8ZBar41/ylxfyA73QKdEUMAAggggAACCKByxkZxR5bCWtXJYuZqmfzLZzFBAAEEEEAAAQRQaRfFwPdk6XhrQ3bmZmf0w8YmZGeQtmWn08tkJ4q+ZOey+cQEccUAAggggAACiOSkcnW0I396DsMpeVA18Jy8UJEl0FWKLJNMEEAAAQQQQAABVNbYIkvg/vm17OxtnsnOwfqLk+Xt7q0uOzfNU9lpnBwyQVwxgAACCCCAACJmyF8Ui+Th+dXJOfWVJcMXRa4YQAABRAACCKDhxiZpKktxlsjO/WNLdpbnF5289EXjVnZ2t9dk5zvJmCCuGEAAAQQQQACRvEXRBvrfcT7beqHqdfuy0/p4d3JOMOo7WQInxz0miCsGEEAAAQQQQCQnv7aEVzwd1WfXAAAAAElFTkSuQmCC", "alex": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEgAAABICAYAAABV7bNHAAABRElEQVR42u3aMUoDQRQG4FmRIApJChuxsNHa0nQW1pJD5ASC1xDByiZHEWvBE6iNRUihoC5RZBHiCZY3yBCE/f76MbP78QYes1vNLo6XKUh/dycqSd/v87BmYxivU8/idXpbaWV7rSUBBAgQIECAAHUz6zlDV06az5yq+b/aK2cA1kGAAAECBAgQoM4OijlFpW75cga85mhS5s3upkWGSR0ECBAgQIAAAepqqpfr+NNzKnTL1zs5iyfXzUFY8/P1UeTlm5tLHeSIAQIECBAgQNJ6oziKh7ftw3FYsz85CGvuTwdFHnp0dR7WPE0fw5pXHeSIAQIECBAgQNKa6u3hdolBBwECBAgQIECAJP3lH8Viea7LrLPXL7JMzidsHQQIECBAgAAB6uygmDMs5fw3uMoBr9QQuFjUOsgRAwQIECBAgKQlvzjQPndtfuKvAAAAAElFTkSuQmCC", "ari": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEgAAABICAYAAABV7bNHAAABUElEQVR42u3awQoBURTG8aFpzIKSRtlYkrLxCMqGnWRhoXkEewtFXkAeQZaSHRvlJZR4gVnYKGlI8QTTueV2U/P/1qdx/Tq3vobEuJb7WEKK+aw0Yj1eb0tHOvWGOLPYbcWZtOuIM/fwJc4kLQIQQAABBBBAAMUzdirlaCmBKgUv7WW0HNpvtsSZ9WEvzjyfFEWuGEAAAQQQQACRyKKo8ubN77bFGdcrGDu0ymf5CqV0sdqwQVwxgAACCCCAACJRRVFXMfu36DozGwQQQAABBBBAAMW2KKr8T8/pDcWZki13zuNyquXQ1f5InLm85Z/L77M5G8QVAwgggAACCCASkcRtMvjoeJBb/q+3juE5YIO4YgABBBBAABGAfohtsuBdTxctz/EqJWPFlQ0CCCCAAAIIIIBiWxTDa2Ds/34qBc9kVL47GwQQQAABBBBAAMU1X1dGNUzMD82OAAAAAElFTkSuQmCC", "efe": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEgAAABICAYAAABV7bNHAAABeUlEQVR42u3csUrDUBjF8dTWhiYdUguhuImTWHDR1cFF5666uel7uAhu1c3J2VVd9AF0EQqObiKNrVmSYFKpTxDOhVwc9H/mQ3v7437wEUhrJwdnc0ek0Ww6NuK3PNlJstTKd00nY9lZ6oays+AQgAACCCCAAALof6ZhUsrSRC9dna7sfEwi2Wl5vp1FMY5YFBkxgAACCCCACEBVFkWTp4XFrJCdzvxKdnrLbdl5jfesPC3cXnuRnbd8nRvEiAEEEEAAAQQQKVsUZ3kuS6vBjey4XtvKgVaCW4OOySfp82Rxwg1ixAACCCCAAAKIVHmiuH/xIDtH/S3Z2dntWTn0/d277JyPHmXn9HDIDWLEAAIIIIAAAoiUpDY8vpQvs4Tu9Z/88eOvATeIEQMIIIAAAggg4lR4maVIv2Vn0avLztPzyMqhNzf6Vs7s+j43iBEDCCCAAAIIIFK2KJr8HU0Y1J3fWvBsxWRxnX5G3CBGDCCAAAIIIIBISX4A6d1Fin9U4Y0AAAAASUVORK5CYII=", "kai": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEgAAABICAYAAABV7bNHAAABIklEQVR42u3cMUsCYRgH8LtUgoQgWh3dHVxMaOsblPQFHPw6bUJObWn5CXS2pSFa2wqa3HQQDf0E8g73dnD6+88P7939eB54OI5L1/OHbRIjy1W4pnqaFC0niQACBAgQIECAjjPlIi6B8/evKOdcNus6yIgBAgQIECBAkmlRzHEJ/HycBmsuzs+iXCttX+sgIwYIECBAgABJlkUxz+Ut1jk6CBAgQIAACSBA2ZJuFsPgN4qlaid40E3vLlgzaFSi3HT3Yx2smfRfgjV/y5EOMmKAAAECBAiQZFkUv5/GB/nwtfsrHWTEAAECBAgQINmT8nb1m9vF+q9vUc7p3bZ0kBEDBAiQAAIE6J+Txvo9zs/zLCna20IdBAgQIECAAAGS/dkBcw8v0MOuq60AAAAASUVORK5CYII=", "makena": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEgAAABICAYAAABV7bNHAAABZklEQVR42u3bsWrCUBTG8SipSklQVDK0dKwIXTuIu6MvoJujW5/EzbFbn6Dv0DcoFDoqHYJKNDEYStEnuJwzHBya/zcfcnN/nAsHr6n02tHZE1KcTlKJ12m2PItsjqlY0/BvxJqg3hBrskLeV9UjAAEEEEAAAQRQOeNrBiqrbPeJWNN7ujNZa7fOTYZJOggggAACCCCAACrtoKj5VU0zUNWaf2JNvZCf8/35I9Y8KoZJzfvs4l86iCMGEEAAAQQQQMQ1KLYjxTVueGuyWBBeb2NBqFkspYM4YgABBBBAAAFEnFfPioFqsXwVa6bjoVgTPfRNXjpefYk1b+8fYs3LfEYHccQAAggggAACiDhSmYyexY9Z4iT7l5uPWgEdxBEDCCCAAAIIIOIaFAf9+7PNNa6czTYxeU63Y/OFdZZy9cwRAwgggAACCCDiin/Is6v9J9BqwLMaAjV7p4MAAggggAACCKCy5gK2Njz+nVLM0wAAAABJRU5ErkJggg==", "noor": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEgAAABICAYAAABV7bNHAAABUklEQVR42u3bvWoCURCG4bNRElAQ92BhEWwsjRapAkIawcILUIQ0VpZegpcj2lgG7SUXkJ8uTWJlZLUxkEDY9ILMFKMI+371cHb3YQ58hQa1Yi52QjKXKWnEff/+iTOVay/OvC4jd6r30Zxz4QhAAAEEEEAAAZTMBHelUCyKg/tb8SCfvRJnot3PWZ0zfHxig7hiAAEEEEAAAUQOFcXRQyO2KF0FH4oz62hzVh+vKZxsEEAAAQQQQAABlNSkNSVwu9mazOTDvMlLa56liVe8DxsEEEAAAQQQQAAltihqSld7vBBnutWSONOr2xTF6dunODN6/hBnJp06G8QVAwgggAACCCByIMGs34phYIMAAggggAACCCCyn7TVH0M0mb+8m5zTvCk7fqPIFQMIIIAIQAABdOSiuPqKFGPepExaFTyrEqj5djYIIIAAAggggABKav4B+LlG8NqgKd0AAAAASUVORK5CYII=", "sunny": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEgAAABICAYAAABV7bNHAAABOUlEQVR42u3aMQrCQBCF4V1JEzBFRBDiAdQqR/AAegRB8Ai2sTTnsPEIau8t9AAGBDFghJSxF+JsMaQw/6uHzfoxC8OgjeO4MkJ835dKTFmWRuOcMAzFmizLTFN37hgCEEAAAQQQQAC1M57WQVEUiTV5ntNBPDGACEAAAQQQQP80KLps3lw2gS7nuERrW0gHAQQQQAABBBBA5MegWBSFWBQEgdHYFrp8q8m43IcOAggggAACCCCAWjsonlYTsWiUHMQaa61Yc9nOVC493hzFmqoS/3pprumcDuKJAQQQQAABBBCpm+9eu2UFAx0EEEAAAQQQQACR73jZ7SEWRcO+ysfS/VnlnGQxVTnH5bfTQQABBBBAAAEEUFtjz+upuFEc9LqNDZNacRkC7883HcQTAwgggAACCCBSkw+fukETV8y9vAAAAABJRU5ErkJggg==", "zuri": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEgAAABICAYAAABV7bNHAAABQklEQVR42u3bvUrDUBgG4EQjoWorQsXR1VGHLoKLk4KLV+FU78Fb8DoK3oGLIEJvQHAKuEgLYusPRaVeQTwZDkGa551f8vPwHfggJO1k6TyJkHZ7PdjJV7IYt0pmX9/BznT6FuVeS4kAAgQIECBAgJqZSpvb2cFusNNZzYOdzbU8ykO/vM+CnclHuHN992CCHDFAgAABAgRISpL2j/fmdS14/y1VFk4TBAgQIECAAAFqarJFXQKrpMq7myBAgAABAgQIkE/Pf+RycB/sHO0sBzuHvV6Uh74dDoOdm+In2Lk42TdBjhggQIAAAQIkJUmvzk+Dn57H49FCvny3u2WCHDFAgAABAgRISpLVuQR+Pr9GuU5reyPKdR6LJxPkiAECBAgQIEBStigWo0lS1x/NsRa8pMY/o00QIECAAAECBKip+QVR4jVF1vyb0gAAAABJRU5ErkJggg=="};
+const SKINS = [
+  {k:"steve", n:"Steve",  c:"英雄", m:"Wide · 经典款",   w:"128.4k", on:true},
+  {k:"alex",  n:"Alex",   c:"英雄", m:"Slim · 经典款",   w:"96.1k"},
+  {k:"ari",   n:"Ari",    c:"角色", m:"Wide · 默认角色", w:"42.7k"},
+  {k:"efe",   n:"Efe",    c:"角色", m:"Slim · 默认角色", w:"38.2k"},
+  {k:"kai",   n:"Kai",    c:"角色", m:"Wide · 默认角色", w:"35.9k"},
+  {k:"makena",n:"Makena", c:"角色", m:"Slim · 默认角色", w:"33.4k"},
+  {k:"noor",  n:"Noor",   c:"角色", m:"Wide · 默认角色", w:"31.8k"},
+  {k:"sunny", n:"Sunny",  c:"角色", m:"Slim · 默认角色", w:"29.5k"},
+  {k:"zuri",  n:"Zuri",   c:"角色", m:"Wide · 默认角色", w:"27.1k"}
+];
+const skinGrid = document.getElementById("skinGrid");
+let skinCat = "全部", skinQ = "";
+function renderSkins(){
+  const list = SKINS.filter(s => (skinCat==="全部" || s.c===skinCat) &&
+                                 (s.n+s.m).toLowerCase().includes(skinQ.toLowerCase()));
+  skinGrid.innerHTML = list.map(s => `
+    <div class="skin-card ${s.on?'on':''}" data-k="${s.k}" data-n="${s.n}">
+      ${s.on?'<span class="wear">穿戴中</span>':''}
+      <div class="skin-face" style="background-image:url('${SKIN_IMG[s.k]}')"></div>
+      <b>${s.n}</b><div class="m">${s.m}</div>
+      <div class="m" style="opacity:.72">${s.w} 人穿戴</div>
+    </div>`).join("") ||
+    `<div style="grid-column:1/-1;text-align:center;color:var(--muted);font-size:12.5px;padding:38px 0">没有匹配的皮肤</div>`;
+  skinGrid.querySelectorAll(".skin-card").forEach(el=>{
+    el.onclick = ()=>{
+      SKINS.forEach(s=>s.on = (s.k===el.dataset.k));
+      renderSkins(); toast(`已穿戴 ${el.dataset.n} 的皮肤（演示）`);
+    };
+  });
+}
+renderSkins();
+document.querySelectorAll(".cat").forEach(c=>c.onclick=()=>{
+  document.querySelectorAll(".cat").forEach(x=>x.classList.remove("on"));
+  c.classList.add("on"); skinCat = c.textContent.trim(); renderSkins();
+});
+const skinSearch = document.querySelector(".skin-search");
+if(skinSearch) skinSearch.addEventListener("input", e=>{ skinQ = e.target.value.trim(); renderSkins(); });
+
+/* 内存滑块联动 */
+document.getElementById("ramRange").addEventListener("input",e=>{
+  document.getElementById("ramTxt").textContent=(e.target.value/1024*0.58).toFixed(1);
+});
+/* 开关 */
+document.querySelectorAll("[data-sw]").forEach(s=>s.addEventListener("click",()=>s.classList.toggle("on")));
+
+/* ================= 原生状态回填 ================= */
+let NEX_STATE = {account:{name:"",kind:""}, versions:[], selected:"", ram:{min:1024,max:4096}, theme:null, security:null};
+
+function esc(t){ return String(t==null?"":t).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+function applyVars(v){
+  if(!v) return;
+  KEYS.forEach(k=>{ if(v[k]) document.documentElement.style.setProperty("--"+k, v[k]); });
+}
+
+function applyState(s){
+  NEX_STATE = Object.assign(NEX_STATE, s);
+
+  /* ---- 账号 ---- */
+  const acc = s.account || {};
+  document.querySelectorAll(".w-profile .name").forEach(el=>{
+    el.innerHTML = esc(acc.name||"玩家") + ` <span class="badge">${esc(acc.kind||"离线模式")}</span>`;
+  });
+  document.querySelectorAll(".w-profile .mode").forEach(el=>{
+    el.textContent = acc.loggedIn ? "正版账号 · 皮肤已同步" : "离线账号 · 单人皮肤已启用";
+  });
+  const foot = document.querySelector(".rail-foot");
+  if(foot) foot.innerHTML = `NEX Launcher<br>第三方 Minecraft 启动器<br>${esc((s.theme&&s.theme.name)||"深蓝")}主题 · 账号 ${esc(acc.name||"—")}`;
+
+  /* ---- 版本 ---- */
+  if(s.selected){
+    const v = (s.versions||[]).find(x=>x.id===s.selected);
+    document.querySelectorAll(".ver-chip b").forEach(b=>b.textContent=s.selected);
+    document.querySelectorAll(".ver-chip .tag").forEach(t=>t.textContent=(v&&v.loader)||"原版");
+  }
+  TITLES.versions[1] = `已安装 ${(s.versions||[]).length} 个版本`;
+
+  /* ---- 内存 ---- */
+  if(s.ram){
+    const rt=document.getElementById("ramTxt");
+    if(rt) rt.textContent=(s.ram.max/1024*0.58).toFixed(1);
+    const rg=document.getElementById("ramRange");
+    if(rg){ rg.max=Math.max(8192, s.ram.max); rg.value=s.ram.max; }
+    document.querySelectorAll("#page-settings .set-row .lbl span").forEach(sp=>{
+      if(/MB/.test(sp.textContent)) sp.textContent="当前 "+s.ram.max+" MB";
+    });
+  }
+
+  /* ---- 主题 ---- */
+  if(s.theme){
+    if(s.theme.vars) applyVars(s.theme.vars);
+    document.querySelectorAll(".theme-sw").forEach(el=>el.classList.toggle("on", el.dataset.t===s.theme.name));
+  }
+
+  if(s.security) applySecurity(s.security);
+
+  /* 首页「防护运行中」卡片 */
+  if(s.security){
+    const gm = document.querySelector(".w-sec .meta");
+    if(gm){
+      gm.textContent = s.security.guardRunning
+        ? `五道防线 · 守护进程 ${s.security.pid} · 已守护 ${s.security.uptime||"—"}`
+        : "五道防线 · 进程内监控中";
+    }
+  }
+}
+
+const LEVEL_CLS = {"严重":"chip-bad","警告":"chip-warn","提示":"chip-ok","信息":"chip-ok"};
+
+function applySecurity(sec){
+  /* 顶部守护进程信息 */
+  const meta = document.querySelector("#page-security .sec-hero .meta");
+  if(meta){
+    meta.innerHTML = sec.guardRunning
+      ? `守护进程 PID <b>${sec.pid}</b> · 启动于 <b>${esc(sec.started||"—")}</b> · 最后心跳 <b>${esc((sec.beat||"").slice(11,19)||"—")}</b>（已守护 ${esc(sec.uptime||"—")}）<br>关闭启动器后防护仍在运行，下次登录 Windows 会自动开始`
+      : `未检测到独立守护进程 · 当前由启动器进程内引擎提供防护<br>开启「24 小时自动防卫」后，关闭启动器也会继续防护`;
+  }
+  const live = document.querySelector("#page-security .sec-hero .live-chip");
+  if(live) live.innerHTML = `<i></i>${sec.guardRunning?"实时监控中":"进程内监控"}`;
+
+  const panels = [...document.querySelectorAll("#page-security .panel")];
+
+  /* 五道防线开关状态 */
+  const layerPanel = panels.find(p=>p.querySelector("h2") && p.querySelector("h2").textContent.includes("五道防线"));
+  if(layerPanel && sec.shields){
+    const rows = layerPanel.querySelectorAll(".layer");
+    sec.shields.forEach((sh,i)=>{
+      const chip = rows[i] && rows[i].querySelector(".chip-ok,.chip-warn,.chip-bad");
+      if(!chip) return;
+      if(!sh.on){ chip.textContent="已关闭"; chip.className="chip-warn"; }
+      else if(i===1){ chip.textContent=`${(sec.canaries||[]).length} 个诱饵在位`; chip.className="chip-ok"; }
+      else { chip.textContent="正常"; chip.className="chip-ok"; }
+    });
+  }
+
+  /* 诱饵文件列表 */
+  const canPanel = panels.find(p=>p.querySelector("h2") && p.querySelector("h2").textContent.includes("勒索蜜罐"));
+  if(canPanel && sec.canaries && sec.canaries.length){
+    canPanel.querySelectorAll(".canary-row").forEach(el=>el.remove());
+    const h2 = canPanel.querySelector("h2");
+    const rows = sec.canaries.map((pp,i)=>{
+      const parts = pp.split("\\");
+      const short = parts.slice(-2).join("\\");
+      return `<div class="canary-row"><span class="k">${String(i+1).padStart(2,"0")}</span>` +
+             `<span class="p" title="${esc(pp)}">${esc(short)}</span><span class="s">在位</span></div>`;
+    }).join("");
+    h2.insertAdjacentHTML("afterend", rows);
+    const txt = [...h2.childNodes].filter(n=>n.nodeType===3 && n.nodeValue.trim()).pop();
+    if(txt) txt.nodeValue = `勒索蜜罐 · ${sec.canaries.length} 个诱饵`;
+  }
+
+  /* 安全事件日志（真实事件，最新在上） */
+  const logPanel = panels.find(p=>p.querySelector("h2") && p.querySelector("h2").textContent.includes("安全事件日志"));
+  if(logPanel && sec.events){
+    logPanel.querySelectorAll(".log-row").forEach(el=>el.remove());
+    const h2 = logPanel.querySelector("h2");
+    if(!sec.events.length){
+      h2.insertAdjacentHTML("afterend",
+        `<div class="log-row"><span class="t">—</span><div class="body"><b>暂无安全事件 <span class="chip-ok">安全</span></b><span>五道防线全部就绪，未发现威胁</span></div></div>`);
+    }else{
+      const html = sec.events.map(e=>{
+        const t = esc((e.time||"").slice(5));
+        const cls = LEVEL_CLS[e.level] || "chip-ok";
+        return `<div class="log-row"><span class="t">${t}</span><div class="body">` +
+               `<b>${esc(e.title||"")} <span class="${cls}">${esc(e.level||"提示")}</span></b>` +
+               `<span>${esc(e.layer||"")}${e.detail ? " · "+esc(e.detail) : ""}</span></div></div>`;
+      }).join("");
+      h2.insertAdjacentHTML("afterend", html);
+    }
+  }
+}
+
+/* ---- 三个新版页面补一条「打开完整功能页」提示条 ---- */
+if(NEX_APP){
+  ["skins","tools","security"].forEach(key=>{
+    const pg = document.getElementById("page-"+key);
+    if(!pg) return;
+    const bar = document.createElement("div");
+    bar.className = "native-bar";
+    bar.innerHTML = `<span>这里是新版界面 · <b>上传 / 下载 / 安装 / 隔离区操作</b>在启动器完整功能页完成</span>` +
+                    `<button class="abtn" type="button">打开完整功能页 →</button>`;
+    pg.insertBefore(bar, pg.firstChild);
+    bar.querySelector("button").onclick = ()=> nexGoNative(key);
+  });
+}
+
+/* ---- 与宿主握手 ---- */
+if(NEX_APP){
+  NEX_BRIDGE.addEventListener("message", ev=>{
+    const m = ev.data;
+    if(!m || !m.type) return;
+    switch(m.type){
+      case "state": applyState(m); break;
+      case "launch-ok": launchAnimDone(true, "", m.version); break;
+      case "launch-fail": launchAnimDone(false, m.msg||"未知错误", ""); break;
+      case "toast": toast(m.msg); break;
+    }
+  });
+  /* DOM 已就绪，通知宿主推送真实状态 */
+  setTimeout(()=>nexPost({cmd:"ready"}), 80);
+  /* 宿主切走再切回时补一次刷新，保证版本/账号是最新的 */
+  document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) nexPost({cmd:"refresh"}); });
+}
+</script>
+</body>
+</html>

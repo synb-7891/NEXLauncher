@@ -1,0 +1,364 @@
+<Window x:Class="NEXLauncher.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="NEX Launcher" Width="1180" Height="760" MinWidth="960" MinHeight="620"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None" AllowsTransparency="False" Background="#030A15"
+        UseLayoutRounding="True" SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType"
+        Foreground="#E6EDF3">
+
+    <!-- 无边框窗口仍保留系统缩放边框；圆角由 RootBorder 自己绘制 -->
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0" ResizeBorderThickness="6" GlassFrameThickness="1"
+                      CornerRadius="0" UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
+    <Window.Resources>
+        <!-- 侧栏导航按钮（PCL 风格） -->
+        <Style x:Key="NavSide" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="10" Padding="12,9"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="Icon" Text="{TemplateBinding Tag}" FontFamily="Segoe MDL2 Assets"
+                                           FontSize="13" Margin="0,0,10,0" VerticalAlignment="Center" />
+                                <ContentPresenter VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="CapBtn" TargetType="Button">
+            <Setter Property="Width" Value="38" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+                                <Setter Property="Foreground" Value="#FFFFFF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 下载任务条目模板 -->
+        <DataTemplate x:Key="DownloadItemTemplate">
+            <Grid Margin="0,3,0,3">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Name}" FontSize="12"
+                           Foreground="{DynamicResource TextBrush}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding StatusText}" FontSize="11"
+                           Foreground="{DynamicResource AccentBrush}" Margin="8,0,0,0" />
+                <ProgressBar Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,4,0,0"
+                             Minimum="0" Maximum="1" Height="4" Value="{Binding Progress}"
+                             Foreground="{DynamicResource AccentBrush}" Background="{DynamicResource SurfaceAltBrush}"
+                             BorderThickness="0" />
+                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Detail}" FontSize="10"
+                           Foreground="{DynamicResource MutedBrush}" Margin="8,3,0,0" />
+            </Grid>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid>
+    <Border x:Name="RootBorder" Background="{DynamicResource BgBrush}" CornerRadius="14"
+            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="52" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- 顶栏：Logo + 拖拽区 + 窗口按钮 -->
+            <Border Grid.Row="0" Background="{DynamicResource HeaderBrush}" CornerRadius="14,14,0,0"
+                    MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <Grid Margin="18,0,10,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Width="28" Height="28" Background="{DynamicResource AccentBrush}" CornerRadius="7">
+                            <TextBlock Text="N" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource BgBrush}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <TextBlock Text="NEX" FontSize="14" FontWeight="Bold" Margin="10,0,0,0" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextBrush}" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Style="{StaticResource CapBtn}" Content="&#xE949;" Click="Minimize_Click" Margin="0,0,4,0" />
+                        <Button Style="{StaticResource CapBtn}" Content="&#xE8BB;" Click="Close_Click" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 主体：左侧栏 + 内容区 -->
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="232" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- PCL 风格侧栏 -->
+                <Border Grid.Column="0" Background="{DynamicResource HeaderBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0"
+                        CornerRadius="0,0,0,14">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <!-- 账号卡片：皮肤头像 + 用户名 + 登录按钮 -->
+                        <Border Grid.Row="0" Margin="14,16,14,8" Padding="12,12"
+                                Background="{DynamicResource SurfaceBrush}" CornerRadius="10">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <Border Width="52" Height="52" CornerRadius="8" Background="{DynamicResource SurfaceAltBrush}">
+                                        <Border x:Name="AccountAvatarBox" CornerRadius="8">
+                                            <TextBlock x:Name="AccountAvatarLetter" Text="?" FontSize="22" FontWeight="Bold"
+                                                       Foreground="{DynamicResource AccentBrush}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
+                                    </Border>
+                                    <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="AccountStatus" Text="未登录" FontSize="14" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextBrush}" TextTrimming="CharacterEllipsis"
+                                                   MaxWidth="118" />
+                                        <TextBlock x:Name="AccountTypeText" Text="点击按钮登录" FontSize="11"
+                                                   Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,0" />
+                                    </StackPanel>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                    <Button x:Name="LoginButton" Content="微软登录" Click="Login_Click"
+                                            Padding="10,5" Background="{DynamicResource AccentBrush}"
+                                            Foreground="{DynamicResource BgBrush}" BorderThickness="0"
+                                            FontWeight="SemiBold" Cursor="Hand" FontSize="11" Margin="0,0,6,0" />
+                                    <Button x:Name="OfflineButton" Content="离线" Click="Offline_Click"
+                                            Padding="10,5" Background="{DynamicResource SurfaceAltBrush}"
+                                            Foreground="{DynamicResource TextDimBrush}" BorderThickness="0"
+                                            Cursor="Hand" FontSize="11" Margin="0,0,6,0" />
+                                    <Button x:Name="LogoutButton" Content="退出" Click="Logout_Click"
+                                            Padding="10,5" Background="{DynamicResource SurfaceAltBrush}"
+                                            Foreground="{DynamicResource MutedBrush}" BorderThickness="0"
+                                            Cursor="Hand" FontSize="11" Visibility="Collapsed" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 纵向导航 -->
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                      Margin="10,6,10,6">
+                            <StackPanel>
+                                <Button x:Name="NavHome" Style="{StaticResource NavSide}" Content="首页" Tag="&#xE80F;" Click="Navigate_Click" />
+                                <Button x:Name="NavVersions" Style="{StaticResource NavSide}" Content="游戏版本" Tag="&#xE7FC;" Click="Navigate_Click" />
+                                <Button x:Name="NavMods" Style="{StaticResource NavSide}" Content="资源下载" Tag="&#xE74C;" Click="Navigate_Click" />
+                                <Button x:Name="NavModsManage" Style="{StaticResource NavSide}" Content="模组管理" Tag="&#xE8F1;" Click="Navigate_Click" />
+                                <Button x:Name="NavSkins" Style="{StaticResource NavSide}" Content="皮肤" Tag="&#xE771;" Click="Navigate_Click" />
+                                <Button x:Name="NavAccounts" Style="{StaticResource NavSide}" Content="账号" Tag="&#xE77B;" Click="Navigate_Click" />
+                                <Button x:Name="NavMulti" Style="{StaticResource NavSide}" Content="联机" Tag="&#xE968;" Click="Navigate_Click" />
+                                <Button x:Name="NavBedrock" Style="{StaticResource NavSide}" Content="基岩版" Tag="&#xE7FC;" Click="Navigate_Click" />
+                                <Button x:Name="NavTools" Style="{StaticResource NavSide}" Content="工具" Tag="&#xE90F;" Click="Navigate_Click" />
+                                <Button x:Name="NavTreasure" Style="{StaticResource NavSide}" Content="百宝箱" Tag="&#xE7B8;" Click="Navigate_Click" />
+                                <Button x:Name="NavJava" Style="{StaticResource NavSide}" Content="Java" Tag="&#xE943;" Click="Navigate_Click" />
+                                <Button x:Name="NavSecurity" Style="{StaticResource NavSide}" Content="安全防护" Tag="&#xE72E;" Click="Navigate_Click" />
+                                <Button x:Name="NavSettings" Style="{StaticResource NavSide}" Content="设置" Tag="&#xE713;" Click="Navigate_Click" />
+                                <Button x:Name="NavPersonalize" Style="{StaticResource NavSide}" Content="个性化" Tag="&#xE790;" Click="Navigate_Click" />
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <!-- 底部：版本选择 + 启动按钮（PCL 风格） -->
+                        <Border Grid.Row="2" Margin="14,8,14,16" Padding="12,12"
+                                Background="{DynamicResource SurfaceBrush}" CornerRadius="10">
+                            <StackPanel>
+                                <TextBlock Text="选择游戏版本" FontSize="11" Foreground="{DynamicResource MutedBrush}" />
+                                <ComboBox x:Name="SideVersionBox" FontSize="12" Padding="8,6"
+                                          Margin="0,6,0,8" Background="{DynamicResource BgBrush}"
+                                          Foreground="{DynamicResource TextBrush}"
+                                          BorderBrush="{DynamicResource BorderBrush}" />
+                                <TextBlock x:Name="SideLoaderText" Text="" FontSize="11"
+                                           Foreground="{DynamicResource AccentBrush}" Margin="0,0,0,6"
+                                           TextTrimming="CharacterEllipsis" />
+                                <Button x:Name="SideLaunchButton" Content="▶  启动游戏" Click="SideLaunch_Click"
+                                        Padding="12,9" Background="{DynamicResource AccentBrush}"
+                                        Foreground="{DynamicResource BgBrush}" BorderThickness="0"
+                                        FontWeight="Bold" FontSize="13" Cursor="Hand" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- 内容区 -->
+                <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <ContentControl x:Name="PageHost" Margin="32,26,32,34" />
+                </ScrollViewer>
+            </Grid>
+
+            <!-- 右下角悬浮层：下载进度 + 强制关停游戏 -->
+            <StackPanel Grid.RowSpan="2" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                        Margin="0,0,18,18" Panel.ZIndex="20">
+
+                <!-- 下载进度面板（默认收起） -->
+                <Border x:Name="DownloadPanel" Visibility="Collapsed" Width="330"
+                        Background="{DynamicResource HeaderBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1" CornerRadius="12" Padding="14,12">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,6">
+                            <Button DockPanel.Dock="Right" Content="清除完成" FontSize="11" Padding="8,3"
+                                    Background="Transparent" Foreground="{DynamicResource MutedBrush}"
+                                    BorderThickness="0" Cursor="Hand" Click="ClearFinishedDownloads_Click" />
+                            <TextBlock Text="下载任务" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center" />
+                        </DockPanel>
+
+                        <!-- 上半：游戏版本下载 -->
+                        <TextBlock Text="游戏版本" FontSize="11" Foreground="{DynamicResource AccentBrush}" />
+                        <ItemsControl x:Name="GameDownloadList" ItemTemplate="{StaticResource DownloadItemTemplate}" Margin="0,2,0,8" />
+                        <TextBlock x:Name="GameDownloadEmpty" Text="暂无游戏版本下载" FontSize="11"
+                                   Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,8" />
+
+                        <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,2,0,8" />
+
+                        <!-- 下半：模组 / 整合包 / 资源包下载 -->
+                        <TextBlock Text="模组与资源" FontSize="11" Foreground="{DynamicResource AccentBrush}" />
+                        <ItemsControl x:Name="ModDownloadList" ItemTemplate="{StaticResource DownloadItemTemplate}" Margin="0,2,0,2" />
+                        <TextBlock x:Name="ModDownloadEmpty" Text="暂无模组下载" FontSize="11"
+                                   Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,2" />
+                    </StackPanel>
+                </Border>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                    <!-- 强制关停游戏（电源图标，游戏运行时出现） -->
+                    <Button x:Name="KillGameButton" Visibility="Collapsed" Click="KillGame_Click"
+                            ToolTip="强制结束游戏进程" Width="44" Height="44"
+                            Background="#D83B3B" BorderThickness="0" Cursor="Hand" Margin="0,0,10,0">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="22">
+                                    <TextBlock Text="&#xE7E8;" FontFamily="Segoe MDL2 Assets" FontSize="17"
+                                               Foreground="#FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Bd" Property="Background" Value="#F05050" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+
+                    <!-- 下载任务悬浮按钮 -->
+                    <Button x:Name="DownloadToggle" Visibility="Collapsed" Click="ToggleDownloadPanel_Click"
+                            ToolTip="下载任务" Height="44" Padding="14,0"
+                            Background="{DynamicResource SurfaceAltBrush}" BorderThickness="0" Cursor="Hand">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="22">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="&#xE896;" FontFamily="Segoe MDL2 Assets" FontSize="15"
+                                                   Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding Tag, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                   FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextBrush}" Margin="6,0,0,0" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BorderBrush}" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+    </Border>
+
+        <!-- ===== 新版 WebView2 界面层：叠加在原界面之上，原界面结构一行未改 ===== -->
+        <Grid x:Name="WebShellLayer" Background="#F3F5F9" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="40" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- 原生标题栏：窗口拖动 / 最小化 / 最大化 / 关闭 -->
+            <Border Grid.Row="0" Background="#060D19" BorderBrush="#1E2C42" BorderThickness="0,0,0,1"
+                    MouseLeftButtonDown="WebTitleBar_MouseLeftButtonDown">
+                <Grid Margin="14,0,8,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Width="20" Height="20" Background="#4C9AFF" CornerRadius="6">
+                            <TextBlock Text="N" FontSize="12" FontWeight="Bold" Foreground="#030A15"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <TextBlock Text="NEX Launcher" FontSize="12" FontWeight="SemiBold" Margin="8,0,0,0"
+                                   Foreground="#8FA3BE" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button x:Name="WebMinButton" Click="WebMin_Click" Width="34" Height="26"
+                                Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                FontFamily="Segoe MDL2 Assets" FontSize="10" Foreground="#8FA3BE"
+                                Content="&#xE921;" ToolTip="最小化" />
+                        <Button x:Name="WebMaxButton" Click="WebMax_Click" Width="34" Height="26"
+                                Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                FontFamily="Segoe MDL2 Assets" FontSize="10" Foreground="#8FA3BE"
+                                Content="&#xE922;" ToolTip="最大化" />
+                        <Button x:Name="WebCloseButton" Click="WebClose_Click" Width="34" Height="26"
+                                Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                FontFamily="Segoe MDL2 Assets" FontSize="10" Foreground="#8FA3BE"
+                                Content="&#xE8BB;" ToolTip="关闭" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <wv2:WebView2 x:Name="WebHost" Grid.Row="1" DefaultBackgroundColor="#F3F5F9" />
+        </Grid>
+    </Grid>
+</Window>
