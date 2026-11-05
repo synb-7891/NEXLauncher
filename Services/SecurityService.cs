@@ -3,6 +3,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Win32;
 
 namespace NEXLauncher.Services;
@@ -90,6 +91,11 @@ public sealed class SecurityService : IDisposable
         _sysTimer.Elapsed += (_, _) => { try { CheckSystemGuard(); } catch { } };
         _behaviorTimer = new System.Timers.Timer(1_000) { AutoReset = true };
         _behaviorTimer.Elapsed += (_, _) => CheckBurst();
+        // 主动拦截：进程行为扫描（3 秒一次）与移动盘 autorun 巡检（6 秒一次）
+        _procTimer = new System.Timers.Timer(3_000) { AutoReset = true };
+        _procTimer.Elapsed += (_, _) => { try { ScanProcesses(); } catch { } };
+        _driveTimer = new System.Timers.Timer(6_000) { AutoReset = true };
+        _driveTimer.Elapsed += (_, _) => { try { CheckRemovableDrives(); } catch { } };
     }
 
     /// <summary>按设置启动/停止各道防线（每次设置变更后调用）。</summary>
@@ -101,6 +107,8 @@ public sealed class SecurityService : IDisposable
         {
             StopWatchers();
             if (_behaviorTimer != null) _behaviorTimer.Enabled = false;
+            if (_procTimer != null) _procTimer.Enabled = false;
+            if (_driveTimer != null) _driveTimer.Enabled = false;
             _sysTimer?.Stop();
             return;
         }
@@ -109,6 +117,10 @@ public sealed class SecurityService : IDisposable
         if (_behaviorTimer != null) _behaviorTimer.Enabled = s.SecBehaviorMonitor;
         if (s.SecSystemGuard) _sysTimer?.Start(); else _sysTimer?.Stop();
         if (s.SecRansomGuard) DeployCanaries();
+        // 主动拦截引擎
+        if (_procTimer != null) _procTimer.Enabled = s.SecActiveBlock;
+        if (_driveTimer != null) _driveTimer.Enabled = s.SecActiveBlock;
+        if (s.SecActiveBlock) PrimeKnownProcesses();
     }
 
     // ================= 启动 / 停止 =================
@@ -174,6 +186,8 @@ public sealed class SecurityService : IDisposable
         StopWatchers();
         _sysTimer?.Dispose();
         _behaviorTimer?.Dispose();
+        _procTimer?.Dispose();
+        _driveTimer?.Dispose();
     }
 
     // ================= 第二道：勒索蜜罐 =================
@@ -241,6 +255,11 @@ public sealed class SecurityService : IDisposable
         {
             if (Environment.GetEnvironmentVariable("NEX_SEC_DEBUG") == "1")
                 GuardDaemon.Log($"[FS] {kind} {fullPath}");
+
+            // 0) 主动拦截：新落地/被改写的可疑文件立即隔离，使其无法被执行
+            if (kind is "新建" or "重命名" or "修改")
+                InspectNewFile(fullPath);
+
             // 1) 蜜罐命中？
             if (File.Exists(CanaryDir))
             {
@@ -278,7 +297,8 @@ public sealed class SecurityService : IDisposable
                     _ = Task.Run(() =>
                     {
                         try { DeployCanaries(); } catch { }
-                        if (Settings.SecAutoKill) AutoKillSuspects();
+                        if (Settings.SecActiveBlock) KillRecentSuspects("蜜罐诱饵被篡改，疑似勒索加密进行中");
+                        else if (Settings.SecAutoKill) AutoKillSuspects();
                     });
                     return;
                 }
@@ -325,7 +345,8 @@ public sealed class SecurityService : IDisposable
             $"最近 4 秒内在 {roots.Count} 个受监控目录出现大量文件改写（{count} 次）。\n" +
             "这是勒索软件批量加密的典型行为。建议：① 立即断网 ② 打开任务管理器结束可疑进程 ③ 检查文档是否已被加密。",
             roots.FirstOrDefault()));
-        if (Settings.SecAutoKill) Task.Run(AutoKillSuspects);
+        if (Settings.SecAutoKill && !Settings.SecActiveBlock) Task.Run(AutoKillSuspects);
+        else if (Settings.SecActiveBlock) Task.Run(() => KillRecentSuspects("检测到批量文件改写（勒索加密特征）"));
     }
 
     /// <summary>自动防御：终止临时目录/近期启动的可疑进程（只杀当前用户可杀的，杀不动就跳过）。</summary>
@@ -397,6 +418,47 @@ public sealed class SecurityService : IDisposable
         return sb.ToString();
     }
 
+    /// <summary>
+    /// 自动清除指向临时/下载目录的恶意启动项（HKCU 优先，HKLM 需要管理员权限）。
+    /// 这是"病毒驻留"最常见的形式，直接删掉注册表值即可断掉它的开机自启。
+    /// </summary>
+    private static bool TryRemoveSuspiciousAutorun(string line)
+    {
+        try
+        {
+            var eq = line.IndexOf('=');
+            if (eq < 0) return false;
+            var keyPath = line[..eq];
+            var lastSlash = keyPath.LastIndexOf('\\');
+            if (lastSlash < 0) return false;
+            var sub = keyPath[..lastSlash];
+            var valueName = keyPath[(lastSlash + 1)..];
+
+            if (!sub.EndsWith(@"\Run", StringComparison.OrdinalIgnoreCase) &&
+                !sub.EndsWith(@"\RunOnce", StringComparison.OrdinalIgnoreCase)) return false;
+
+            var value = line[(eq + 1)..].ToLowerInvariant();
+            var suspicious = value.Contains(@"\temp\") || value.Contains(@"\tmp\") ||
+                             value.Contains(@"\downloads\") || value.Contains(@"\appdata\local\temp");
+            if (!suspicious) return false;
+
+            foreach (var root in new[] { Registry.CurrentUser, Registry.LocalMachine })
+            {
+                try
+                {
+                    using var k = root.OpenSubKey(sub, writable: true);
+                    if (k == null) continue;
+                    if (k.GetValue(valueName) == null) continue;
+                    k.DeleteValue(valueName, throwOnMissingValue: false);
+                    return true;
+                }
+                catch { }
+            }
+        }
+        catch { }
+        return false;
+    }
+
     private static string ReadHosts()
     {
         try { return File.ReadAllText(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), @"drivers\etc\hosts")); }
@@ -415,13 +477,31 @@ public sealed class SecurityService : IDisposable
             if (old != hosts && hosts.Length > 0)
             {
                 var added = hosts.Split('\n').Except(old.Split('\n')).Where(l => l.Trim().Length > 0).ToList();
-                File.WriteAllText(HostsSnapshotPath, hosts);
+                var restored = false;
+                if (Settings.SecActiveBlock && added.Count > 0)
+                {
+                    // 主动拦截：把 hosts 写回快照内容（需要管理员权限，失败则退化为告警）
+                    try
+                    {
+                        var hostsPath = Path.Combine(
+                            Environment.GetFolderPath(Environment.SpecialFolder.System), @"drivers\etc\hosts");
+                        File.WriteAllText(hostsPath, old);
+                        restored = true;
+                    }
+                    catch { }
+                }
+                File.WriteAllText(HostsSnapshotPath, restored ? old : hosts);
                 if (added.Count > 0)
+                {
+                    if (restored) Interlocked.Increment(ref _blockedCount);
                     Raise(new SecurityEvent(
-                        DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), "警告", "第四道·系统守护",
-                        "hosts 文件被修改",
+                        DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), restored ? "严重" : "警告", "第四道·系统守护",
+                        restored ? "hosts 被篡改，已自动还原" : "hosts 文件被修改",
                         "hosts 新增了 " + added.Count + " 行：\n" + string.Join("\n", added.Take(10)) +
-                        "\n恶意软件常通过 hosts 劫持游戏登录/下载域名。若不是你改的，建议立即用管理员权限清理。"));
+                        (restored
+                            ? "\n已按快照自动还原，域名劫持已被阻断。"
+                            : "\n恶意软件常通过 hosts 劫持游戏登录/下载域名。请以管理员身份运行启动器以启用自动还原。")));
+                }
             }
         }
         else if (hosts.Length > 0)
@@ -437,13 +517,24 @@ public sealed class SecurityService : IDisposable
             if (old != autorun)
             {
                 var added = autorun.Split('\n').Except(old.Split('\n')).Where(l => l.Trim().Length > 0).ToList();
-                File.WriteAllText(AutorunSnapshotPath, autorun);
+                var removed = new List<string>();
+                if (Settings.SecActiveBlock && added.Count > 0)
+                    removed = added.Where(TryRemoveSuspiciousAutorun).ToList();
+
+                if (removed.Count > 0) Interlocked.Increment(ref _blockedCount);
+                File.WriteAllText(AutorunSnapshotPath, removed.Count > 0 ? CollectAutorunSnapshot() : autorun);
+
                 if (added.Count > 0)
                     Raise(new SecurityEvent(
-                        DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), "警告", "第四道·系统守护",
-                        "发现新的开机自启动项",
+                        DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), removed.Count > 0 ? "严重" : "警告",
+                        "第四道·系统守护",
+                        removed.Count > 0
+                            ? $"已自动清除 {removed.Count} 个恶意开机启动项"
+                            : "发现新的开机自启动项",
                         string.Join("\n", added.Take(10)) +
-                        "\n病毒常把自己加进启动项实现开机运行。若不是你安装的软件，请到任务管理器 → 启动 应用里禁用。"));
+                        (removed.Count > 0
+                            ? "\n这些启动项指向临时目录/下载目录，已判定为病毒驻留并从注册表中删除。"
+                            : "\n病毒常把自己加进启动项实现开机运行。若不是你安装的软件，请到任务管理器 → 启动 应用里禁用。")));
             }
         }
         else
@@ -578,6 +669,435 @@ public sealed class SecurityService : IDisposable
             return found.Count;
         }
         catch { return 0; }
+    }
+
+    // ================= 主动拦截引擎（不只是告警，直接处置） =================
+
+    private System.Timers.Timer? _procTimer;
+    private System.Timers.Timer? _driveTimer;
+    private readonly HashSet<int> _knownPids = [];
+    private readonly HashSet<string> _knownDrives = new(StringComparer.OrdinalIgnoreCase);
+    private int _blockedCount;
+    private readonly object _blockLock = new();
+
+    /// <summary>累计已拦截次数（终止进程 / 隔离文件 / 清除启动项）。</summary>
+    public int BlockedCount => Volatile.Read(ref _blockedCount);
+
+    public bool DefenderAvailable => FindMpCmdRun() != null;
+
+    /// <summary>双扩展名伪装：报告.pdf.exe / 照片.jpg.scr 之类。</summary>
+    private static readonly Regex DoubleExtRx = new(
+        @"\.(pdf|docx?|xlsx?|pptx?|jpe?g|png|gif|bmp|txt|rtf|mp[34]|avi|mkv|zip|rar|7z|jar|iso|img|url)\s*\.\s*(exe|scr|com|pif|bat|cmd|js|jse|vbs|vbe|wsf|hta|msi)$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>仿冒系统进程名（用数字 0 替换字母 o 之类）。</summary>
+    private static readonly Regex FakeSystemRx = new(
+        @"^(svch0st|scvhost|lsas|lsasss|csrsss|winl0gon|expl0rer|taskh0st|rundl132|sp00lsv|conhosts|dllh0st|smsss)$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static bool IsRiskyExt(string ext) =>
+        ext is ".exe" or ".scr" or ".com" or ".pif" or ".bat" or ".cmd" or ".js" or ".jse"
+            or ".vbs" or ".vbe" or ".wsf" or ".hta" or ".msi" or ".lnk" or ".inf";
+
+    private void PrimeKnownProcesses()
+    {
+        lock (_blockLock)
+        {
+            if (_knownPids.Count > 0) return;
+            try
+            {
+                foreach (var p in Process.GetProcesses())
+                {
+                    _knownPids.Add(p.Id);
+                    p.Dispose();
+                }
+            }
+            catch { }
+        }
+    }
+
+    /// <summary>给进程打分：命中危险特征越多分越高，达到阈值才处置，避免误杀正常软件。</summary>
+    private (int Score, List<string> Reasons) ScoreProcess(string path)
+    {
+        var reasons = new List<string>();
+        var score = 0;
+        var lower = path.ToLowerInvariant();
+        var name = Path.GetFileName(path);
+        var ext = Path.GetExtension(path).ToLowerInvariant();
+
+        // 系统目录与自家程序永不处置
+        if (lower.StartsWith(@"c:\windows\")) return (0, reasons);
+        if (lower.Contains("nexlauncher") || lower.Contains("nexguard")) return (0, reasons);
+        if (lower.StartsWith(@"c:\program files\") || lower.StartsWith(@"c:\program files (x86)\")) return (0, reasons);
+
+        if (DoubleExtRx.IsMatch(name)) { score += 55; reasons.Add("双扩展名伪装（如 报告.pdf.exe）"); }
+
+        if (FakeSystemRx.IsMatch(name))
+        {
+            score += 60;
+            reasons.Add("仿冒系统进程名");
+        }
+
+        var isExe = ext is ".exe" or ".scr" or ".com" or ".pif";
+        if (!isExe) return (score, reasons);
+
+        var temp = Path.GetTempPath().ToLowerInvariant();
+        var inTemp = lower.StartsWith(temp) || lower.Contains(@"\temp\") || lower.Contains(@"\downloads\");
+        if (inTemp) { score += 20; reasons.Add("从临时/下载目录直接运行"); }
+
+        // 文件名像随机串：长度 ≥12 且没有两个连续元音
+        var stem = Path.GetFileNameWithoutExtension(name);
+        if (stem.Length >= 12 && !stem.Contains(' ') && !Regex.IsMatch(stem, "[aeiouAEIOU]{2}"))
+        {
+            score += 15;
+            reasons.Add("文件名高度随机");
+        }
+
+        // 隐藏属性 + 可执行 = 典型隐藏病毒
+        try
+        {
+            if ((File.GetAttributes(path) & FileAttributes.Hidden) != 0)
+            {
+                score += 25;
+                reasons.Add("隐藏属性的可执行文件");
+            }
+        }
+        catch { }
+
+        return (score, reasons);
+    }
+
+    /// <summary>每 3 秒扫一遍新出现的进程，命中危险特征立即终止并隔离映像。</summary>
+    private void ScanProcesses()
+    {
+        if (!Settings.SecActiveBlock) return;
+        PrimeKnownProcesses();
+
+        Process[] all;
+        try { all = Process.GetProcesses(); } catch { return; }
+
+        var live = new HashSet<int>();
+        foreach (var p in all)
+        {
+            try
+            {
+                live.Add(p.Id);
+                bool isNew;
+                lock (_blockLock) isNew = _knownPids.Add(p.Id);
+                if (!isNew) continue;
+                if (p.Id <= 8) continue;
+
+                string path;
+                try { path = p.MainModule?.FileName ?? ""; } catch { continue; }
+                if (string.IsNullOrWhiteSpace(path)) continue;
+
+                var (score, reasons) = ScoreProcess(path);
+                if (score < 55) continue;
+
+                BlockProcess(p, path, score, reasons);
+            }
+            catch { }
+            finally { try { p.Dispose(); } catch { } }
+        }
+
+        // 清理已退出的 PID，避免集合无限增长
+        lock (_blockLock)
+        {
+            if (_knownPids.Count > 600)
+            {
+                var stale = _knownPids.Where(id => !live.Contains(id)).ToList();
+                foreach (var id in stale) _knownPids.Remove(id);
+            }
+        }
+    }
+
+    /// <summary>终止进程树 + 隔离映像文件 + 可选彻底删除。</summary>
+    private void BlockProcess(Process p, string path, int score, List<string> reasons)
+    {
+        var name = p.ProcessName;
+        var pid = p.Id;
+        var detail = string.Join("；", reasons);
+
+        var killed = false;
+        try
+        {
+            p.Kill(entireProcessTree: true);
+            killed = true;
+        }
+        catch
+        {
+            try
+            {
+                using var k = Process.Start(new ProcessStartInfo("taskkill", $"/PID {pid} /T /F")
+                { UseShellExecute = false, CreateNoWindow = true });
+                k?.WaitForExit(3000);
+                killed = k != null && k.HasExited && k.ExitCode == 0;
+            }
+            catch { }
+        }
+
+        var dest = SafeQuarantine(path, $"主动拦截：{detail}（风险评分 {score}）");
+        Interlocked.Increment(ref _blockedCount);
+
+        if (Settings.SecAutoDelete && !string.IsNullOrEmpty(dest))
+        {
+            try { File.Delete(dest); dest = ""; } catch { }
+        }
+
+        Raise(new SecurityEvent(
+            DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), "严重", "主动拦截",
+            killed
+                ? $"已终止并清除可疑进程 {name} (PID {pid})"
+                : $"发现可疑进程 {name} (PID {pid})，但权限不足未能终止",
+            $"判定依据：{detail}（风险评分 {score}）\n程序路径：{path}\n" +
+            (killed ? "进程树已终止。" : "请以管理员身份重新打开启动器后重试。") +
+            (string.IsNullOrEmpty(dest) ? "" : $"\n映像已隔离：{dest}"),
+            path));
+
+        if (Settings.SecDefenderAssist && !string.IsNullOrEmpty(dest))
+            _ = Task.Run(() => DefenderRemove(dest));
+    }
+
+    /// <summary>不抛异常的隔离：先尝试移动，失败则复制后删除，再失败返回空串。</summary>
+    private string SafeQuarantine(string path, string reason)
+    {
+        try { return Quarantine(path, reason); }
+        catch
+        {
+            try
+            {
+                Directory.CreateDirectory(QuarantineDir);
+                var dest = Path.Combine(QuarantineDir,
+                    Path.GetFileName(path) + "." + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".quar");
+                File.Copy(path, dest, true);
+                try { File.Delete(path); } catch { }
+                return dest;
+            }
+            catch { return ""; }
+        }
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTime> _inspected =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>文件落地检查：新出现的可疑文件立即移入隔离区，使其无法被双击执行。</summary>
+    private void InspectNewFile(string fullPath)
+    {
+        if (!Settings.SecActiveBlock) return;
+        var ext = Path.GetExtension(fullPath).ToLowerInvariant();
+        var name = Path.GetFileName(fullPath);
+        if (!IsRiskyExt(ext) && !DoubleExtRx.IsMatch(name)) return;
+
+        // 同一文件 5 秒内只处理一次（写入过程会连发多个 Changed 事件）
+        var now = DateTime.Now;
+        if (_inspected.TryGetValue(fullPath, out var last) && (now - last).TotalSeconds < 5) return;
+        _inspected[fullPath] = now;
+        if (_inspected.Count > 2000) _inspected.Clear();
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(400); // 等写入落盘
+                if (!File.Exists(fullPath)) return;
+
+                if (DoubleExtRx.IsMatch(name))
+                {
+                    HandleThreatFile(fullPath, "双扩展名伪装，是钓鱼木马最常见的传播手法");
+                    return;
+                }
+
+                if (ext == ".inf" && name.Equals("autorun.inf", StringComparison.OrdinalIgnoreCase))
+                {
+                    HandleThreatFile(fullPath, "autorun.inf 是 U 盘病毒的自启动入口");
+                    return;
+                }
+
+                if (ext == ".lnk")
+                {
+                    var raw = ReadShortcutRaw(fullPath);
+                    if (raw.Contains("powershell", StringComparison.OrdinalIgnoreCase) ||
+                        raw.Contains("cmd.exe", StringComparison.OrdinalIgnoreCase) ||
+                        raw.Contains("mshta", StringComparison.OrdinalIgnoreCase) ||
+                        raw.Contains("wscript", StringComparison.OrdinalIgnoreCase) ||
+                        raw.Contains("cscript", StringComparison.OrdinalIgnoreCase))
+                    {
+                        HandleThreatFile(fullPath, "快捷方式指向命令行/脚本，是伪装成文档的病毒入口");
+                        return;
+                    }
+                    return;
+                }
+
+                var v = ScanFile(fullPath);
+                if (v.Threat && v.Level == "严重")
+                    HandleThreatFile(fullPath, v.Reason);
+            }
+            catch { }
+        });
+    }
+
+    /// <summary>把 .lnk 的原始字节按 ASCII/Unicode 双解码，用来找命令行目标。</summary>
+    private static string ReadShortcutRaw(string lnkPath)
+    {
+        try
+        {
+            var bytes = File.ReadAllBytes(lnkPath);
+            return Encoding.ASCII.GetString(bytes) + "\n" + Encoding.Unicode.GetString(bytes);
+        }
+        catch { return ""; }
+    }
+
+    /// <summary>处置一个已确认的威胁文件：隔离（或删除）+ 记录 + Defender 复核。</summary>
+    private void HandleThreatFile(string path, string reason)
+    {
+        var name = Path.GetFileName(path);
+        var dest = SafeQuarantine(path, "主动拦截：" + reason);
+        if (!string.IsNullOrEmpty(dest)) Interlocked.Increment(ref _blockedCount);
+
+        var deleted = false;
+        if (Settings.SecAutoDelete && !string.IsNullOrEmpty(dest))
+        {
+            try { File.Delete(dest); deleted = true; dest = ""; } catch { }
+        }
+
+        Raise(new SecurityEvent(
+            DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), "严重", "主动拦截",
+            deleted ? $"已拦截并删除 {name}" : $"已拦截并隔离 {name}",
+            $"{reason}\n原路径：{path}\n" +
+            (deleted
+                ? "该文件已被彻底删除，无法再被执行。"
+                : $"已隔离到：{dest}\n可在「隔离区」查看或还原。") +
+            (Settings.SecDefenderAssist ? "\n已交由 Windows Defender 复核。" : ""),
+            path));
+
+        if (Settings.SecDefenderAssist && !string.IsNullOrEmpty(dest))
+            _ = Task.Run(() => DefenderRemove(dest));
+    }
+
+    /// <summary>紧急处置：诱饵触发或批量加密时，终止近期启动的可疑进程。</summary>
+    public int KillRecentSuspects(string why)
+    {
+        var killed = 0;
+        Process[] all;
+        try { all = Process.GetProcesses(); } catch { return 0; }
+
+        foreach (var p in all)
+        {
+            try
+            {
+                if (p.Id <= 8) continue;
+                string path;
+                try { path = p.MainModule?.FileName ?? ""; } catch { continue; }
+                if (string.IsNullOrWhiteSpace(path)) continue;
+
+                var (score, reasons) = ScoreProcess(path);
+                if (score < 45) continue;
+
+                var recent = false;
+                try { recent = (DateTime.Now - p.StartTime).TotalMinutes < 15; } catch { }
+                if (!recent) continue;
+
+                try
+                {
+                    p.Kill(entireProcessTree: true);
+                    killed++;
+                    var dest = SafeQuarantine(path, $"紧急处置：{why}");
+                    Interlocked.Increment(ref _blockedCount);
+                    Raise(new SecurityEvent(
+                        DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), "严重", "主动拦截",
+                        $"已紧急终止可疑进程 {p.ProcessName} (PID {p.Id})",
+                        $"触发原因：{why}\n判定依据：{string.Join("；", reasons)}\n路径：{path}\n" +
+                        (string.IsNullOrEmpty(dest) ? "映像文件被占用，未能隔离。" : $"映像已隔离：{dest}"),
+                        path));
+                }
+                catch { }
+            }
+            catch { }
+            finally { try { p.Dispose(); } catch { } }
+        }
+        return killed;
+    }
+
+    // ---- Windows Defender 联动（对隔离文件做二次确认与清除） ----
+
+    private static string? FindMpCmdRun()
+    {
+        try
+        {
+            var p1 = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"Windows Defender\MpCmdRun.exe");
+            if (File.Exists(p1)) return p1;
+
+            const string platform = @"C:\ProgramData\Microsoft\Windows Defender\Platform";
+            if (Directory.Exists(platform))
+            {
+                foreach (var d in Directory.GetDirectories(platform).OrderByDescending(x => x))
+                {
+                    var exe = Path.Combine(d, "MpCmdRun.exe");
+                    if (File.Exists(exe)) return exe;
+                }
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    /// <summary>调用系统 Defender 扫描并清除指定文件。返回 true 表示 Defender 确认并处理了威胁。</summary>
+    public bool DefenderRemove(string filePath)
+    {
+        var mp = FindMpCmdRun();
+        if (mp == null) return false;
+        try
+        {
+            var psi = new ProcessStartInfo(mp,
+                $"-Scan -ScanType 3 -File \"{filePath}\" -Disinfect -Timeout 60")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            using var p = Process.Start(psi);
+            if (p == null) return false;
+            p.WaitForExit(70_000);
+            return p.HasExited && p.ExitCode == 2; // 2 = 发现并已处理
+        }
+        catch { return false; }
+    }
+
+    // ---- 移动盘（U 盘）autorun 巡检 ----
+
+    private void CheckRemovableDrives()
+    {
+        if (!Settings.SecActiveBlock) return;
+        try
+        {
+            var current = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var d in DriveInfo.GetDrives())
+            {
+                if (d.DriveType != DriveType.Removable || !d.IsReady) continue;
+                var root = d.RootDirectory.FullName;
+                current.Add(root);
+                if (!_knownDrives.Add(root)) continue;
+
+                var autorun = Path.Combine(root, "autorun.inf");
+                if (File.Exists(autorun))
+                    HandleThreatFile(autorun, "移动盘中的 autorun.inf 是 U 盘病毒的自启动入口");
+
+                foreach (var f in Directory.GetFiles(root, "*.exe"))
+                {
+                    var v = ScanFile(f);
+                    if (v.Threat) HandleThreatFile(f, v.Reason);
+                }
+
+                Raise(new SecurityEvent(
+                    DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), "信息", "移动盘巡检",
+                    $"已检查移动盘 {d.Name}", "autorun.inf 与根目录可执行文件已扫描。"));
+            }
+            // 拔掉的盘下次重新检查
+            _knownDrives.RemoveWhere(x => !current.Contains(x));
+        }
+        catch { }
     }
 
     // ================= 隔离区 =================

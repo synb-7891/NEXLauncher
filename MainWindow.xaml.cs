@@ -8,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using CmlLib.Core.Auth;
 using Microsoft.Win32;
 using NEXLauncher.Controls;
@@ -74,12 +75,85 @@ public partial class MainWindow : Window
     private Button? _tunnelClaimBtn;
     private Button? _tunnelCopyClaimBtn;
 
+    // ---------------------------------------------------------------- 系统托盘
+
+    private System.Windows.Forms.NotifyIcon? _trayIcon;
+
+    /// <summary>
+    /// 系统托盘图标：出现在右下角「显示隐藏的图标」里；右键菜单可完整退出
+    /// （结束全部游戏进程树 + 释放托盘 + 结束启动器后台与所有进程）。
+    /// </summary>
+    private void SetupTrayIcon()
+    {
+        try
+        {
+            _trayIcon = new System.Windows.Forms.NotifyIcon
+            {
+                Text = "NEX Launcher - Minecraft 启动器",
+                Visible = true
+            };
+            try
+            {
+                var exePath = Environment.ProcessPath;
+                if (!string.IsNullOrEmpty(exePath) && System.IO.File.Exists(exePath))
+                    _trayIcon.Icon = System.Drawing.Icon.ExtractAssociatedIcon(exePath);
+            }
+            catch { }
+
+            var menu = new System.Windows.Forms.ContextMenuStrip();
+            menu.Items.Add("打开启动器", null, (_, _) =>
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    Show();
+                    WindowState = WindowState.Normal;
+                    Activate();
+                });
+            });
+            menu.Items.Add("退出启动器", null, (_, _) => ExitFully());
+            _trayIcon.ContextMenuStrip = menu;
+            _trayIcon.DoubleClick += (_, _) =>
+            {
+                Dispatcher.Invoke(() => { Show(); WindowState = WindowState.Normal; Activate(); });
+            };
+        }
+        catch { }
+    }
+
+    /// <summary>完整退出：结束全部游戏进程树 → 释放托盘 → 结束启动器（后台与全部进程）。</summary>
+    private void ExitFully()
+    {
+        try
+        {
+            var killed = _minecraftService?.KillAllGames() ?? 0;
+            if (killed > 0) _trayIcon?.ShowBalloonTip(1200, "NEX Launcher", $"已结束 {killed} 个游戏进程，正在退出…", System.Windows.Forms.ToolTipIcon.Info);
+        }
+        catch { }
+        try
+        {
+            Dispatcher.Invoke(() =>
+            {
+                _trayIcon?.Dispose();
+                _trayIcon = null;
+                Application.Current.Shutdown();
+            });
+        }
+        catch { }
+        // 兜底：确保任何后台线程/WebView2 子进程都不残留
+        Environment.Exit(0);
+    }
+
+    // ---------------------------------------------------------------- 系统托盘结束
+
     public MainWindow()
     {
         InitializeComponent();
+        // 第一优先级：立刻开始创建 WebView2 运行时环境（约 1~3 秒），与后续构造工作并行
+        _ = GetEnvironmentAsync();
         _minecraftService = new MinecraftService(_gameDirectory);
         _serverDirectoryService = new ServerDirectoryService(_gameDirectory);
         PageHost.RenderTransform = new TranslateTransform(0, 0);
+        SetupTrayIcon();
 
         // 应用已保存的个性化设置（先主题预设，再用户自定义强调色）
         // 0.4.1 一次性迁移：旧版把默认蓝 #5B9DFF 当成"自定义强调色"存盘，会盖掉主题主色
@@ -213,7 +287,14 @@ public partial class MainWindow : Window
         };
 
         // ---- 新版界面（WebView2）：窗口就绪后加载；失败自动回退经典界面 ----
-        Loaded += (_, _) => InitWebShell();
+        Loaded += (_, _) =>
+        {
+            // 关键：等 UI 线程真正空闲再创建 WebView2 控制器。
+            // Loaded 触发时 Splash 刚 Close、首帧布局/渲染还在排队，此时建控制器
+            // 会被 UI 线程饿到超时（0x800705B4）——这正是"有时候点不开"的根源。
+            // ApplicationIdle 优先级会在所有布局渲染完成后才执行，控制器 1~3 秒即可就绪。
+            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(InitWebShell));
+        };
     }
 
     private static string FormatBytes(long bytes) => bytes switch
@@ -245,13 +326,23 @@ public partial class MainWindow : Window
         AccountStatus.Text = "正在打开登录窗口...";
         try
         {
-            // WebView2 嵌入式登录窗口由 CmlLib 自动弹出，使用 Mojang 官方 Client Info
-            _session = await _minecraftService.AuthenticateAsync();
-            // 记录账号类型，下次启动自动恢复；并缓存会话作为静默刷新失败时的后备
+            // 自家 OAuth 登录窗口（WPF + WebView2，云白界面），替代 CmlLib 内置 WinForms 窗口
+            var login = new Services.MicrosoftLoginWindow(_settings) { Owner = this };
+            login.ShowDialog();
+
+            if (login.Result == null)
+            {
+                AccountStatus.Text = "已取消登录";
+                return;
+            }
+
+            _session = login.Result.Value.Session;
+            // 记录账号类型与凭据；刷新令牌用于下次启动静默恢复
             _settings.LastAccountType = "microsoft";
             _settings.MicrosoftSessionName = _session.Username ?? "";
             _settings.MicrosoftSessionUuid = _session.UUID ?? "";
             _settings.MicrosoftSessionToken = _session.AccessToken ?? "";
+            _settings.MicrosoftRefreshToken = login.Result.Value.RefreshToken;
             _settings.Save();
             SyncCurrentToAccounts();
             UpdateAccountUi();
@@ -340,7 +431,24 @@ public partial class MainWindow : Window
             if (_settings.LastAccountType == "microsoft")
             {
                 AccountStatus.Text = "正在恢复登录...";
-                _session = await _minecraftService.TrySilentLoginAsync();
+                // 优先用自家 OAuth 刷新令牌静默恢复（自家登录流程写入的）
+                if (!string.IsNullOrEmpty(_settings.MicrosoftRefreshToken))
+                {
+                    var refreshed = await MicrosoftAuthFlow.RefreshAsync(_settings.MicrosoftRefreshToken);
+                    if (refreshed != null)
+                    {
+                        try
+                        {
+                            var (sess, newRefresh) = await MicrosoftAuthFlow.BuildSessionAsync(
+                                refreshed.Value.AccessToken, refreshed.Value.RefreshToken);
+                            _session = sess;
+                            _settings.MicrosoftRefreshToken = newRefresh;
+                        }
+                        catch { _session = null; }
+                    }
+                }
+                if (_session == null)
+                    _session = await _minecraftService.TrySilentLoginAsync();
                 if (_session != null)
                 {
                     // 静默刷新成功：更新缓存的会话（令牌已续期）
@@ -669,6 +777,14 @@ public partial class MainWindow : Window
                 ShowNativeShell();
             }
             _webNavRequested = false;
+        }
+
+        // 启动提速：新版界面还没失败时，首页不再构建整套旧版原生页面（纯浪费的几秒）；
+        // 真失败需要回退时由 InitWebShell 重建。
+        if (!_webShellFailed && page == "首页" && !_suppressShellSwitch)
+        {
+            HighlightNav(page);
+            return;
         }
 
         HighlightNav(page);

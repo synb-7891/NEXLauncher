@@ -3,6 +3,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>NEXLauncher</AssemblyName>
@@ -11,15 +12,24 @@
     <AssemblyTitle>NEX Launcher</AssemblyTitle>
     <Product>NEX Launcher</Product>
     <Company>NEX Launcher</Company>
-    <Version>3.9.8</Version>
-    <FileVersion>3.9.8.0</FileVersion>
+    <Version>4.0.5</Version>
+    <FileVersion>4.0.5.0</FileVersion>
     <Copyright>Copyright © 2026 NEX Launcher 版权所有，保留一切权利。</Copyright>
     <NeutralLanguage>zh-CN</NeutralLanguage>
   </PropertyGroup>
+  <!-- 只用 WinForms 的 NotifyIcon 做托盘：移除 SDK 注入的 WinForms/Drawing 隐式 global using，
+       避免与 WPF 同名类型冲突（Button/ComboBox/Point 等）；托盘代码内使用全限定名 -->
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
   <ItemGroup>
     <!-- probe/ 是本地测试与截图脚本目录，不参与编译 -->
     <Compile Remove="probe\**\*.cs" />
     <!-- cross/ mobile/ 是跨端独立工程，不参与主工程编译 -->
+    <!-- tools/ 是自检与打包脚本，不参与编译 -->
+    <Compile Remove="tools\**\*.cs" />
+    <EmbeddedResource Remove="tools\**\**" />
     <Compile Remove="cross\**\*.cs;mobile\**\*.cs" />
     <Content Remove="cross\**\**;mobile\**\**" />
     <None Remove="cross\**\**;mobile\**\**" />
@@ -29,11 +39,14 @@
     <Content Include="Assets\skins\*.png" CopyToOutputDirectory="PreserveNewest" />
     <!-- 新版 WebView2 界面（单文件 HTML，离线可用） -->
     <Content Include="Assets\webshell\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 同时嵌入 exe：桌面只放一个 exe 也能跑，启动时自动释放到 Assets/webshell -->
+    <EmbeddedResource Include="Assets\webshell\index.html;Assets\webshell\icon-192.png;Assets\webshell\icon-512.png;Assets\webshell\manifest.webmanifest"
+                      LogicalName="nex.webshell.%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="CmlLib.Core" Version="4.1.0" />
     <PackageReference Include="CmlLib.Core.Auth.Microsoft" Version="3.4.0" />
     <PackageReference Include="XboxAuthNet.Game.Msal" Version="0.2.0" />
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.1823.32" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
   </ItemGroup>
 </Project>

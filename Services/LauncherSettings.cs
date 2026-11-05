@@ -37,6 +37,8 @@ public sealed class LauncherSettings
     public string MicrosoftSessionName { get; set; } = "";
     public string MicrosoftSessionUuid { get; set; } = "";
     public string MicrosoftSessionToken { get; set; } = "";
+    /// <summary>微软 OAuth 刷新令牌（自家登录流程，用于启动时静默恢复）。</summary>
+    public string MicrosoftRefreshToken { get; set; } = "";
 
     // ---- 游戏启动 ----
     public string LastQuickVersion { get; set; } = "";
@@ -81,6 +83,12 @@ public sealed class LauncherSettings
     public bool SecGameGuard { get; set; } = true;
     /// <summary>检测到勒索行为时自动终止可疑进程（临时目录/近期启动的可疑程序）</summary>
     public bool SecAutoKill { get; set; } = false;
+    /// <summary>主动拦截引擎：实时判定可疑进程与可疑文件，命中即刻终止/隔离（不只是告警）</summary>
+    public bool SecActiveBlock { get; set; } = true;
+    /// <summary>拦截后直接删除源文件（关闭 = 只移入隔离区，可从隔离区还原）</summary>
+    public bool SecAutoDelete { get; set; } = false;
+    /// <summary>对可疑文件调用系统 Windows Defender 做二次确认与清除</summary>
+    public bool SecDefenderAssist { get; set; } = true;
     /// <summary>24 小时自动防卫：关闭启动器后由后台守护进程继续防护，并随 Windows 登录自启</summary>
     public bool SecAlwaysGuard { get; set; } = true;
     /// <summary>隔离区路径（空 = 默认 %LocalAppData%/NEXLauncher/quarantine）</summary>

@@ -12,7 +12,7 @@ public partial class SplashWindow : Window
     public SplashWindow()
     {
         InitializeComponent();
-        _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(260) };
         _timer.Tick += (_, _) =>
         {
             _timer.Stop();
@@ -21,11 +21,11 @@ public partial class SplashWindow : Window
                 var mainWindow = new MainWindow();
                 Application.Current.MainWindow = mainWindow;
 
-                // 新版界面（WebView2）就绪前主窗口保持完全不可见，避免旧界面闪现：
-                // 以透明、不抢焦点方式启动（拿到窗口句柄供 WebView2 初始化），就绪后淡入。
-                mainWindow.Opacity = 0d;
-                mainWindow.ShowActivated = false;
+                // 新版界面（WebView2）首帧前，主窗口本身就是云白外壳（标题栏 + 云白底），
+                // 不会出现黑屏或旧界面；直接显示，启动最快。
                 mainWindow.Show();
+                // 主窗口本身已是云白外壳（WebView2 加载完才展开），立即关掉启动画面，不再遮挡
+                Close();
 
                 var revealed = false;
                 void Reveal()
@@ -33,7 +33,6 @@ public partial class SplashWindow : Window
                     if (revealed) return;
                     revealed = true;
                     mainWindow.RevealShell();
-                    Close();
                 }
                 mainWindow.WebShellReady += Reveal;
 

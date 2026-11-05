@@ -218,7 +218,8 @@ public sealed class MinecraftService
     /// 组装启动参数：内存 / Java / 窗口 / 额外 JVM 参数 / 外置登录 agent / 离线皮肤 agent。
     /// 启动游戏与「导出启动脚本」共用同一份逻辑，保证行为一致。
     /// </summary>
-    private static MLaunchOption CreateLaunchOption(MSession session, LauncherSettings settings, string? extraGameArgs)
+    private static MLaunchOption CreateLaunchOption(string versionId, string gameDirectory,
+        MSession session, LauncherSettings settings, string? extraGameArgs)
     {
         var option = new MLaunchOption
         {
@@ -250,6 +251,20 @@ public sealed class MinecraftService
             option.ExtraGameArguments = SplitArguments(extraGameArgs)
                 .Select(a => new MArgument(a))
                 .ToList();
+        }
+
+        // 版本隔离：把游戏工作目录指到 versions/<id>（PCL2 同款）。
+        // CmlLib 只按 MinecraftPath 解析 assets/libraries/versions，不会传 --gameDir，
+        // 所以必须自己加 --gameDir，否则游戏永远读根目录 mods —— 模组页和游戏看到的目录对不上。
+        if (settings.VersionIsolation && !string.IsNullOrWhiteSpace(versionId))
+        {
+            var isoDir = Path.Combine(gameDirectory, "versions", versionId);
+            Directory.CreateDirectory(isoDir);
+            var gameArgs = new List<MArgument> { new("--gameDir"), new(isoDir) };
+            var existing = option.ExtraGameArguments?.ToList();
+            option.ExtraGameArguments = existing is { Count: > 0 }
+                ? existing.Concat(gameArgs).ToList()
+                : gameArgs;
         }
 
         // 外置登录（authlib-injector）：注入真实的 Yggdrasil 认证服务器
@@ -298,7 +313,7 @@ public sealed class MinecraftService
     public async Task<string> BuildLaunchCommandAsync(string versionId, MSession session, LauncherSettings settings,
         string? extraGameArgs = null, CancellationToken cancellationToken = default)
     {
-        var option = CreateLaunchOption(session, settings, extraGameArgs);
+        var option = CreateLaunchOption(versionId, _gameDirectory, session, settings, extraGameArgs);
         MinecraftLauncher? launcher = null;
         try
         {
@@ -337,7 +352,7 @@ public sealed class MinecraftService
             _installLock.Release();
         }
 
-        var option = CreateLaunchOption(session, settings, extraGameArgs);
+        var option = CreateLaunchOption(versionId, _gameDirectory, session, settings, extraGameArgs);
 
         Process process;
         MinecraftLauncher? buildLauncher = null;
@@ -350,6 +365,9 @@ public sealed class MinecraftService
         {
             SafeDispose(buildLauncher);
         }
+        // 隔离模式下把进程工作目录也切到版本目录（日志、崩溃报告跟随 --gameDir）
+        if (settings.VersionIsolation)
+            process.StartInfo.WorkingDirectory = Path.Combine(_gameDirectory, "versions", versionId);
         process.EnableRaisingEvents = true;
         PlaytimeStatsService.Instance.AttachProcess(versionId, process);
 

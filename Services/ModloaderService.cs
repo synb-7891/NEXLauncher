@@ -25,31 +25,41 @@ public sealed class ModloaderService
 
     public sealed record ForgeLoaderInfo(List<string> Versions, string? Latest, string? Recommended);
 
-    /// <summary>获取 Fabric 可用的加载器版本列表（返回稳定版）。</summary>
+    /// <summary>
+    /// 获取 Fabric 可用的加载器版本列表。
+    /// 注意：Fabric meta 只把「最新一个」loader 标记 stable=true，其余全部是 false；
+    /// 若只过滤 stable，下拉框永远只剩 1 个版本。这里返回全部版本（稳定版排最前），
+    /// 默认选中项即最新稳定版，行为与 HMCL/PCL 一致。
+    /// 数据源：官方 meta 优先，失败自动切 BMCLAPI 国内镜像（实测 0.6s vs 官方 5.9s）。
+    /// </summary>
     public async Task<List<string>> GetFabricLoaderVersionsAsync(string gameVersion)
     {
-        var url = $"https://meta.fabricmc.net/v2/versions/loader/{gameVersion}";
-        var json = await Http.GetStringAsync(url);
+        var json = await FetchWithFallbackAsync(
+            $"https://meta.fabricmc.net/v2/versions/loader/{gameVersion}",
+            $"https://bmclapi2.bangbang93.com/fabric-meta/v2/versions/loader/{gameVersion}");
         using var doc = JsonDocument.Parse(json);
-        var result = new List<string>();
+        var stableList = new List<string>();
+        var unstableList = new List<string>();
         foreach (var item in doc.RootElement.EnumerateArray())
         {
-            // Fabric meta 结构：{ loader: { version: "0.16.x", stable: true }, ... }
+            // Fabric meta 结构：{ loader: { version: "0.20.1", stable: true }, ... }
             if (!item.TryGetProperty("loader", out var loader)) continue;
             if (!loader.TryGetProperty("version", out var ver)) continue;
             var version = ver.GetString();
             if (string.IsNullOrEmpty(version)) continue;
             var stable = loader.TryGetProperty("stable", out var s) && s.GetBoolean();
-            if (stable) result.Add(version);
+            if (stable) stableList.Add(version); else unstableList.Add(version);
         }
-        return result;
+        // 同版本可能同时出现在多个 intermediary/映射条目下，去重
+        return stableList.Concat(unstableList).Distinct().ToList();
     }
 
-    /// <summary>获取 Quilt 可用的加载器版本列表。</summary>
+    /// <summary>获取 Quilt 可用的加载器版本列表（官方源失败自动切 BMCLAPI 镜像）。</summary>
     public async Task<List<string>> GetQuiltLoaderVersionsAsync(string gameVersion)
     {
-        var url = $"https://meta.quiltmc.org/v3/versions/loader/{gameVersion}";
-        var json = await Http.GetStringAsync(url);
+        var json = await FetchWithFallbackAsync(
+            $"https://meta.quiltmc.org/v3/versions/loader/{gameVersion}",
+            $"https://bmclapi2.bangbang93.com/quilt-meta/v3/versions/loader/{gameVersion}");
         using var doc = JsonDocument.Parse(json);
         var result = new List<string>();
         foreach (var item in doc.RootElement.EnumerateArray())
@@ -60,7 +70,36 @@ public sealed class ModloaderService
             var version = ver.GetString();
             if (!string.IsNullOrEmpty(version)) result.Add(version);
         }
-        return result;
+        return result.Distinct().ToList();
+    }
+
+    /// <summary>
+    /// 主源 + 镜像源双线路抓取：主源失败（超时/网络抖动）自动切镜像，
+    /// 每个源各重试一次。两条路都断才向上抛异常。
+    /// </summary>
+    private static async Task<string> FetchWithFallbackAsync(string primary, string mirror)
+    {
+        Exception? last = null;
+        foreach (var url in new[] { primary, primary, mirror, mirror })
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                var body = await Http.GetStringAsync(url);
+                try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "NEX-fabric-debug.log"),
+                    $"[{DateTime.Now:HH:mm:ss}] OK {new Uri(url).Host}{new Uri(url).AbsolutePath} len={body.Length} {sw.ElapsedMilliseconds}ms\n"); }
+                catch { }
+                return body;
+            }
+            catch (Exception ex)
+            {
+                last = ex;
+                try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "NEX-fabric-debug.log"),
+                    $"[{DateTime.Now:HH:mm:ss}] FAIL {new Uri(url).Host}{new Uri(url).AbsolutePath} {ex.InnerException?.Message ?? ex.Message} {sw.ElapsedMilliseconds}ms\n"); }
+                catch { }
+            }
+        }
+        throw last ?? new Exception("所有数据源均不可用");
     }
 
     /// <summary>获取 Forge 可用的加载器版本（最新在前），并附官方"最新/推荐"标记。优先走 BMCLAPI 国内镜像，失败回落官方源。</summary>
@@ -216,7 +255,15 @@ public sealed class ModloaderService
             return gameVersion; // 原版
         }
 
-        var json = await Http.GetStringAsync(url);
+        var json = loaderId == "fabric"
+            ? await FetchWithFallbackAsync(
+                url,
+                $"https://bmclapi2.bangbang93.com/fabric-meta/v2/versions/loader/{gameVersion}/{loaderVersion}/profile/json")
+            : loaderId == "quilt"
+                ? await FetchWithFallbackAsync(
+                    url,
+                    $"https://bmclapi2.bangbang93.com/quilt-meta/v3/versions/loader/{gameVersion}/{loaderVersion}/profile/json")
+                : await Http.GetStringAsync(url);
         var dir = Path.Combine(gameDirectory, "versions", versionId);
         Directory.CreateDirectory(dir);
         await File.WriteAllTextAsync(Path.Combine(dir, versionId + ".json"), json);

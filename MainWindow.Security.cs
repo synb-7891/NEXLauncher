@@ -95,6 +95,38 @@ public partial class MainWindow
             _settings.SecAutoKill, v => _settings.SecAutoKill = v));
         root.Children.Add(fwCard);
 
+        // ---- 主动拦截引擎 ----
+        var blockCard = Card();
+        blockCard.Margin = new Thickness(0, 14, 0, 0);
+        blockCard.Children.Add(Label("主动拦截引擎", 13, UiPalette.Text, FontWeights.SemiBold));
+        var blockDesc = new TextBlock
+        {
+            Text = "开启后真正动手处置，而不只是记日志：可疑进程终止 + 映像隔离或删除、伪装文件落地即隔离、恶意启动项自动摘除、hosts 劫持自动还原、U 盘 autorun 病毒清除。",
+            FontSize = 11.5,
+            Foreground = Brush(UiPalette.Muted),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 2, 0, 6)
+        };
+        blockCard.Children.Add(blockDesc);
+        blockCard.Children.Add(SecToggle("主动拦截", "实时判定可疑进程与文件，命中即刻终止/隔离（每 3 秒扫描一次新进程）",
+            _settings.SecActiveBlock, v => _settings.SecActiveBlock = v));
+        blockCard.Children.Add(SecToggle("拦截后彻底删除", "关闭时只移入隔离区（可从隔离区还原）；开启后直接删除文件，不给病毒留副本",
+            _settings.SecAutoDelete, v => _settings.SecAutoDelete = v));
+        blockCard.Children.Add(SecToggle("Windows Defender 复核", "对拦截到的文件调用系统 Defender 二次确认并清除，双引擎交叉验证",
+            _settings.SecDefenderAssist, v => _settings.SecDefenderAssist = v));
+
+        var svc = SecurityService.Instance;
+        var blockStat = new TextBlock
+        {
+            Text = $"本次运行已拦截处置 {svc.BlockedCount} 次 · Defender 联动：{(svc.DefenderAvailable ? "可用" : "未检测到")}" +
+                   (_settings.SecActiveBlock ? "" : " · 当前未开启拦截"),
+            FontSize = 11.5,
+            Foreground = Brush(UiPalette.Accent),
+            Margin = new Thickness(0, 8, 0, 0)
+        };
+        blockCard.Children.Add(blockStat);
+        root.Children.Add(blockCard);
+
         // ---- 事件日志 ----
         var evtCard = Card();
         evtCard.Margin = new Thickness(0, 14, 0, 0);

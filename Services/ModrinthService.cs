@@ -62,6 +62,103 @@ public sealed class ModrinthService
         return (file.Url, file.FileName);
     }
 
+    /// <summary>
+    /// 取「指定的那一个版本」（PCL2 式版本选择弹窗选完后用）；versionId 为空或找不到时退回最新版本。
+    /// 指定版本走 /v2/version/{id} 单条查询，不拉整个项目的版本列表（Sodium 这种 200+ 版本会慢十几秒）。
+    /// </summary>
+    public async Task<ModrinthVersion?> GetVersionAsync(string projectId, string? versionId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!string.IsNullOrWhiteSpace(versionId))
+        {
+            try
+            {
+                var one = await GetStringWithFallbackAsync(
+                    $"/v2/version/{Uri.EscapeDataString(versionId)}", 15, cancellationToken);
+                var v = JsonSerializer.Deserialize<ModrinthVersion>(one);
+                if (v != null && v.Files.Count > 0) return v;
+            }
+            catch (Exception) when (!cancellationToken.IsCancellationRequested) { /* 单条查询失败退回列表 */ }
+        }
+
+        var versions = await GetVersionsAsync(projectId, cancellationToken);
+        var withFiles = versions.Where(v => v.Files.Count > 0).ToList();
+        if (withFiles.Count == 0) return null;
+        if (!string.IsNullOrWhiteSpace(versionId))
+        {
+            var hit = withFiles.FirstOrDefault(v => v.Id == versionId);
+            if (hit != null) return hit;
+        }
+        return withFiles.OrderByDescending(v => v.DatePublished).First();
+    }
+
+    /// <summary>
+    /// 查询必需前置依赖（弹窗提醒用）。可按「选定文件版本 + 目标游戏版本 + 加载器」精确挑选前置文件，
+    /// 避免给 1.21.11 的模组配上 26.3 的前置；单个前置查询失败自动跳过。
+    /// </summary>
+    public async Task<List<ModrinthDepInfo>> GetRequiredDependenciesAsync(string projectId,
+        string? versionId = null, string? gameVersion = null, string? loader = null,
+        CancellationToken cancellationToken = default)
+    {
+        var picked = await GetVersionAsync(projectId, versionId, cancellationToken);
+        if (picked == null) return [];
+
+        var result = new List<ModrinthDepInfo>();
+        foreach (var dep in picked.Dependencies
+                     .Where(d => d.DependencyType == "required" && !string.IsNullOrEmpty(d.ProjectId)))
+        {
+            try
+            {
+                var proj = await GetProjectAsync(dep.ProjectId, cancellationToken);
+                var dl = await PickDownloadAsync(dep.ProjectId, gameVersion, loader, cancellationToken)
+                         ?? await GetLatestDownloadAsync(dep.ProjectId, cancellationToken);
+                if (dl == null) continue;
+                result.Add(new ModrinthDepInfo
+                {
+                    ProjectId = dep.ProjectId,
+                    Title = proj?.Title ?? dep.ProjectId,
+                    IconUrl = proj?.IconUrl ?? "",
+                    Url = dl.Value.Url,
+                    FileName = dl.Value.FileName
+                });
+            }
+            catch (Exception) when (!cancellationToken.IsCancellationRequested) { }
+        }
+        return result;
+    }
+
+    /// <summary>在项目里挑一个「匹配目标游戏版本 + 加载器」的最新文件；没有完全匹配就退回该加载器最新。</summary>
+    private async Task<(string Url, string FileName)?> PickDownloadAsync(string projectId,
+        string? gameVersion, string? loader, CancellationToken cancellationToken)
+    {
+        // 先让服务端按 游戏版本 + 加载器 过滤（快），拿不到再退回全量
+        var versions = await GetVersionsFilteredAsync(projectId, gameVersion, loader, cancellationToken);
+        if (versions.Count == 0)
+            versions = await GetVersionsAsync(projectId, cancellationToken);
+        var withFiles = versions.Where(v => v.Files.Count > 0).ToList();
+        if (withFiles.Count == 0) return null;
+
+        IEnumerable<ModrinthVersion> cand = withFiles;
+        if (!string.IsNullOrWhiteSpace(loader) &&
+            !loader.Equals("原版", StringComparison.OrdinalIgnoreCase))
+        {
+            var lid = loader.ToLowerInvariant();
+            var byLoader = withFiles
+                .Where(v => v.Loaders.Any(l => l.Equals(lid, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+            if (byLoader.Count > 0) cand = byLoader;
+        }
+        if (!string.IsNullOrWhiteSpace(gameVersion))
+        {
+            var byGame = cand.Where(v => v.GameVersions.Contains(gameVersion)).ToList();
+            if (byGame.Count > 0) cand = byGame;
+        }
+
+        var best = cand.OrderByDescending(v => v.DatePublished).First();
+        var file = best.PrimaryFile ?? best.Files[0];
+        return (file.Url, file.FileName);
+    }
+
     /// <summary>MCIM 提供的项目简介中文翻译（仅镜像端有此接口，与「下载源」设置无关）。失败返回 null。</summary>
     public async Task<string?> GetTranslatedSummaryAsync(string projectId, CancellationToken cancellationToken = default)
     {
@@ -168,12 +265,37 @@ public sealed class ModrinthService
     }
 
     /// <summary>项目的全部版本（含每个版本的游戏版本、加载器、文件）。</summary>
-    public async Task<List<ModrinthVersion>> GetVersionsAsync(string projectId, CancellationToken cancellationToken = default)
+    public Task<List<ModrinthVersion>> GetVersionsAsync(string projectId, CancellationToken cancellationToken = default)
+        => GetVersionsFilteredAsync(projectId, null, null, cancellationToken);
+
+    /// <summary>
+    /// 按「游戏版本 + 加载器」让服务端先筛（Modrinth 支持 game_versions / loaders 查询参数），
+    /// 避免像 Sodium 这种 200+ 版本的项目拉全量 JSON 卡十几秒。带 3 分钟内存缓存。
+    /// </summary>
+    public async Task<List<ModrinthVersion>> GetVersionsFilteredAsync(string projectId,
+        string? gameVersion, string? loader, CancellationToken cancellationToken = default)
     {
-        var json = await GetStringWithFallbackAsync(
-            $"/v2/project/{Uri.EscapeDataString(projectId)}/version", 25, cancellationToken);
-        return JsonSerializer.Deserialize<List<ModrinthVersion>>(json) ?? [];
+        var key = $"{projectId}|{gameVersion}|{loader}";
+        if (VersionCache.TryGetValue(key, out var hit) && (DateTime.UtcNow - hit.At).TotalMinutes < 3)
+            return hit.List;
+
+        var q = new List<string>();
+        if (!string.IsNullOrWhiteSpace(gameVersion))
+            q.Add("game_versions=" + Uri.EscapeDataString($"[\"{gameVersion}\"]"));
+        if (!string.IsNullOrWhiteSpace(loader))
+            q.Add("loaders=" + Uri.EscapeDataString($"[\"{loader}\"]"));
+        var rel = $"/v2/project/{Uri.EscapeDataString(projectId)}/version" +
+                  (q.Count > 0 ? "?" + string.Join("&", q) : "");
+
+        var json = await GetStringWithFallbackAsync(rel, 25, cancellationToken);
+        var list = JsonSerializer.Deserialize<List<ModrinthVersion>>(json) ?? [];
+
+        if (VersionCache.Count > 80) VersionCache.Clear();
+        VersionCache[key] = (DateTime.UtcNow, list);
+        return list;
     }
+
+    private static readonly Dictionary<string, (DateTime At, List<ModrinthVersion> List)> VersionCache = new();
 
     /// <summary>
     /// 首选源请求失败（超时/断连/非 2xx/解析前错误）时自动用备用源重试一次；
@@ -348,9 +470,27 @@ public sealed class ModrinthVersion
     [JsonPropertyName("date_published")] public DateTimeOffset DatePublished { get; init; }
     [JsonPropertyName("downloads")] public long Downloads { get; init; }
     [JsonPropertyName("files")] public List<ModrinthFile> Files { get; init; } = [];
+    [JsonPropertyName("dependencies")] public List<ModrinthDependency> Dependencies { get; init; } = [];
 
     public ModrinthFile? PrimaryFile =>
         Files.FirstOrDefault(f => f.Primary) ?? Files.FirstOrDefault();
+}
+
+public sealed class ModrinthDependency
+{
+    [JsonPropertyName("project_id")] public string ProjectId { get; init; } = "";
+    [JsonPropertyName("version_id")] public string? VersionId { get; init; }
+    [JsonPropertyName("dependency_type")] public string DependencyType { get; init; } = "required";
+}
+
+/// <summary>前置依赖的展示信息（弹窗用）：项目名 + 图标 + 最新文件。</summary>
+public sealed class ModrinthDepInfo
+{
+    public string ProjectId { get; init; } = "";
+    public string Title { get; init; } = "";
+    public string IconUrl { get; init; } = "";
+    public string FileName { get; init; } = "";
+    public string Url { get; init; } = "";
 }
 
 public sealed class ModrinthFile

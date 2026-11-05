@@ -98,7 +98,7 @@
 
     <Grid>
     <Border x:Name="RootBorder" Background="{DynamicResource BgBrush}" CornerRadius="14"
-            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Visibility="Collapsed">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="52" />
@@ -316,14 +316,14 @@
     </Border>
 
         <!-- ===== 新版 WebView2 界面层：叠加在原界面之上，原界面结构一行未改 ===== -->
-        <Grid x:Name="WebShellLayer" Background="#F3F5F9" Visibility="Collapsed">
+        <Grid x:Name="WebShellLayer" Background="#F3F5F9" Visibility="Visible">
             <Grid.RowDefinitions>
                 <RowDefinition Height="40" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <!-- 原生标题栏：窗口拖动 / 最小化 / 最大化 / 关闭 -->
-            <Border Grid.Row="0" Background="#060D19" BorderBrush="#1E2C42" BorderThickness="0,0,0,1"
+            <!-- 原生标题栏：窗口拖动 / 最小化 / 最大化 / 关闭（云白主题固定配色） -->
+            <Border Grid.Row="0" Background="#F3F5F9" BorderBrush="#E2E8F0" BorderThickness="0,0,0,1"
                     MouseLeftButtonDown="WebTitleBar_MouseLeftButtonDown">
                 <Grid Margin="14,0,8,0">
                     <Grid.ColumnDefinitions>
@@ -334,31 +334,47 @@
 
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Border Width="20" Height="20" Background="#4C9AFF" CornerRadius="6">
-                            <TextBlock Text="N" FontSize="12" FontWeight="Bold" Foreground="#030A15"
+                            <TextBlock Text="N" FontSize="12" FontWeight="Bold" Foreground="#FFFFFF"
                                        HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                         <TextBlock Text="NEX Launcher" FontSize="12" FontWeight="SemiBold" Margin="8,0,0,0"
-                                   Foreground="#8FA3BE" VerticalAlignment="Center" />
+                                   Foreground="#5A6B80" VerticalAlignment="Center" />
                     </StackPanel>
 
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                         <Button x:Name="WebMinButton" Click="WebMin_Click" Width="34" Height="26"
                                 Background="Transparent" BorderThickness="0" Cursor="Hand"
-                                FontFamily="Segoe MDL2 Assets" FontSize="10" Foreground="#8FA3BE"
+                                FontFamily="Segoe MDL2 Assets" FontSize="10" Foreground="#7A8AA0"
                                 Content="&#xE921;" ToolTip="最小化" />
                         <Button x:Name="WebMaxButton" Click="WebMax_Click" Width="34" Height="26"
                                 Background="Transparent" BorderThickness="0" Cursor="Hand"
-                                FontFamily="Segoe MDL2 Assets" FontSize="10" Foreground="#8FA3BE"
+                                FontFamily="Segoe MDL2 Assets" FontSize="10" Foreground="#7A8AA0"
                                 Content="&#xE922;" ToolTip="最大化" />
                         <Button x:Name="WebCloseButton" Click="WebClose_Click" Width="34" Height="26"
                                 Background="Transparent" BorderThickness="0" Cursor="Hand"
-                                FontFamily="Segoe MDL2 Assets" FontSize="10" Foreground="#8FA3BE"
+                                FontFamily="Segoe MDL2 Assets" FontSize="10" Foreground="#7A8AA0"
                                 Content="&#xE8BB;" ToolTip="关闭" />
                     </StackPanel>
                 </Grid>
             </Border>
 
             <wv2:WebView2 x:Name="WebHost" Grid.Row="1" DefaultBackgroundColor="#F3F5F9" />
+
+            <!-- 加载层：WebView2 初始化/首帧期间盖住整个内容区，
+                 绝不让旧界面或白底在等待期露出；就绪后在代码里折叠 -->
+            <Grid x:Name="WebLoading" Grid.Row="1" Background="#F3F5F9">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Border Width="56" Height="56" Background="#4C9AFF" CornerRadius="14"
+                            HorizontalAlignment="Center">
+                        <TextBlock Text="N" FontSize="30" FontWeight="Bold" Foreground="#FFFFFF"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock Text="正在启动新版界面…" FontSize="15" FontWeight="SemiBold"
+                               Foreground="#5A6B80" Margin="0,18,0,0" HorizontalAlignment="Center" />
+                    <TextBlock Text="首次启动需要初始化组件，最长约一分钟，请稍候" FontSize="11.5"
+                               Foreground="#9AA8BC" Margin="0,7,0,0" HorizontalAlignment="Center" />
+                </StackPanel>
+            </Grid>
         </Grid>
     </Grid>
 </Window>

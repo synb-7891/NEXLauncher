@@ -27,3 +27,14 @@ desktop.ini
 *.local.json
 settings.local.json
 .workbuddy/
+release/.github-token
+
+# ---- 调试产物（截图 / 临时页面 / 旧二进制） ----
+_*.png
+_*.jpg
+_*.html
+_*.exe
+_*.js
+tools/_*
+tools/opcheck/
+*.pre-web1

@@ -1,0 +1,371 @@
+
+<script>
+/* ============================================================
+   真实能力桥：所有按钮 → 原生真实操作（无任何演示分支）
+   ============================================================ */
+(function () {
+  const waits = new Map();
+  const $ = s => document.querySelector(s);
+  const e2 = s => String(s == null ? "" : s).replace(/[&<>"']/g,
+    c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[c]));
+  const W = () => document.getElementById("toolOut");
+
+  function post(o) { try { window.chrome.webview.postMessage(o); } catch (e) { } }
+
+  function nexTool(op, args) {
+    return new Promise((res, rej) => {
+      if (!(window.chrome && window.chrome.webview)) { rej(new Error("只能在启动器内使用")); return; }
+      const t = setTimeout(() => { waits.delete(op); rej(new Error("操作超时，请重试")); }, 180000);
+      waits.set(op, { res, rej, t });
+      post(Object.assign({ cmd: "tool", op: op }, args || {}));
+    });
+  }
+  window.nexTool = nexTool;
+
+  function chip(on, txt) {
+    const c = document.getElementById("toolChip");
+    const t = document.getElementById("toolChipTxt");
+    if (!c) return;
+    c.style.display = on ? "" : "none";
+    if (txt && t) t.textContent = txt;
+  }
+
+  function out(html, isErr) {
+    const w = W();
+    if (!w) return;
+    w.classList.toggle("err", !!isErr);
+    w.innerHTML = html;
+  }
+  window.nexOut = out;
+
+  /* 原生推送 */
+  window.chrome.webview.addEventListener("message", ev => {
+    const m = ev.data || {};
+    if (m.type === "tool") {
+      if (m.stage) { chip(true, m.stage); if (m.msg) chip(true, m.msg); return; }
+      const w = waits.get(m.op);
+      if (!w) return;
+      clearTimeout(w.t); waits.delete(m.op); chip(false);
+      if (m.ok) w.res(Object.assign({ _msg: m.msg || "" }, m.data || {}));
+      else w.rej(new Error(m.msg || "操作失败"));
+      return;
+    }
+    if (m.type === "state") {
+      if (!window.__nexDockLoaded) { window.__nexDockLoaded = true; setTimeout(loadDock, 60); }
+    }
+  });
+
+  /* ---------------- 点击委托：data-op ---------------- */
+  document.addEventListener("click", ev => {
+    const el = ev.target.closest("[data-op]");
+    if (!el) return;
+    ev.preventDefault(); ev.stopPropagation();
+    runOp(el);
+  }, true);
+
+  async function runOp(el) {
+    const op = el.dataset.op;
+    const args = {};
+    if (el.dataset.which) args.which = el.dataset.which;
+    if (el.dataset.url) args.url = el.dataset.url;
+    if (el.dataset.path) args.path = el.dataset.path;
+    if (el.dataset.file) args.file = el.dataset.file;
+    if (el.dataset.q) args.quarantined = el.dataset.q;
+    if (el.dataset.id) args.id = el.dataset.id;
+    if (el.dataset.major) args.major = +el.dataset.major;
+    if (op === "skin-apply") { args.url = el.dataset.src; args.slim = el.dataset.slim === "1"; }
+    if (op === "server-status") {
+      const h = prompt("输入服务器地址（例如 mc.hypixel.net 或 play.myserver.com:25566）", "");
+      if (!h) return;
+      args.host = h.trim();
+    }
+    el.classList.add("busy");
+    if (el.tagName === "BUTTON") el.disabled = true;
+    chip(true, "正在执行…");
+    try {
+      const r = await nexTool(op, args);
+      render(op, r);
+    } catch (err) {
+      out("执行失败：" + e2(err.message), true);
+      if (typeof toast === "function") toast(err.message, "info");
+    } finally {
+      el.classList.remove("busy");
+      if (el.tagName === "BUTTON") el.disabled = false;
+      chip(false);
+    }
+  }
+
+  /* ---------------- 结果渲染 ---------------- */
+  function render(op, r) {
+    const msg = r._msg || "完成";
+    switch (op) {
+      case "java-list": {
+        const items = r.items || [];
+        if (!items.length) { out("没有扫描到 Java。点「下载 Java 21」会自动安装，装好后这里会显示真实路径。"); break; }
+        out(items.map(it => `<div class="t-row">
+            <span class="t-tag">${e2(it.title)}</span>
+            <span class="grow" title="${e2(it.path)}">${e2(it.path)}</span>
+            ${it.current ? '<span class="t-tag">当前</span>'
+              : `<button class="t-btn" data-op="java-use" data-path="${e2(it.path)}">设为默认</button>`}
+          </div>`).join(""));
+        break;
+      }
+      case "java-use": out(e2(msg)); setTimeout(() => runOp(document.querySelector('[data-op="java-list"]') || {}), 80); break;
+
+      case "saves-list": {
+        const ws = r.worlds || [], bs = r.backups || [];
+        let h = `<b>存档 ${ws.length} 个</b>`;
+        h += ws.map(w => `<div class="t-row"><span class="grow">${e2(w.name)}</span>
+            <span class="t-tag">${e2(w.size)}</span><span style="color:var(--muted)">${e2(w.last)}</span></div>`).join("") || '<div style="color:var(--muted)">暂无存档</div>';
+        h += `<b style="display:block;margin-top:10px">备份 ${bs.length} 个</b>`;
+        h += bs.map(b => `<div class="t-row"><span class="grow" title="${e2(b.path)}">${e2(b.world)} · ${e2(b.name)}</span>
+            <span class="t-tag">${e2(b.size)}</span>
+            <button class="t-btn" data-op="saves-restore" data-path="${e2(b.path)}">恢复</button></div>`).join("")
+          || '<div style="color:var(--muted)">还没有备份，点「备份全部存档」立即生成</div>';
+        out(h); break;
+      }
+      case "crash-list": {
+        const rs = r.reports || [], dg = r.diagnosis || [];
+        let h = `<b>崩溃报告 ${rs.length} 份</b>`;
+        h += rs.map(x => `<div class="t-row"><span class="grow">${e2(x.file)}</span>
+            <span style="color:var(--muted)">${e2(x.time)} · ${e2(x.size)}</span></div>
+            <div style="color:var(--muted);font-size:11px;padding:0 0 6px 2px">${e2(x.reason || "（无描述行）")}</div>`).join("")
+          || '<div style="color:var(--muted)">没有崩溃报告</div>';
+        h += `<b style="display:block;margin-top:10px">诊断</b>`;
+        h += dg.map(d => `<div class="t-row"><span class="t-tag bad">!</span><span class="grow">${e2(d)}</span></div>`).join("");
+        if (r.logTail) h += `<pre>${e2(r.logTail)}</pre>`;
+        out(h); break;
+      }
+      case "capes-list": {
+        const cs = r.capes || [];
+        if (!cs.length) { out(e2(msg)); break; }
+        out(cs.map(c => `<div class="t-row">
+            <span class="t-tag">${c.state === "ACTIVE" ? "已穿戴" : "可用"}</span>
+            <span class="grow">${e2(c.alias || c.id)}</span>
+            ${c.state === "ACTIVE"
+              ? '<button class="t-btn danger" data-op="cape-set" data-id="none">关闭</button>'
+              : `<button class="t-btn" data-op="cape-set" data-id="${e2(c.id)}">穿戴</button>`}
+          </div>`).join("")); break;
+      }
+      case "audit": {
+        const fs = r.findings || [];
+        out(fs.map(f => `<div class="t-row">
+            <span class="t-tag ${f.ok ? "" : "bad"}">${f.ok ? "通过" : "注意"}</span>
+            <span class="grow"><b>${e2(f.name)}</b> · ${e2(f.detail)}</span></div>`).join("")
+          + `<div style="margin-top:8px;color:${r.badCount ? "#D93B3B" : "#12A37E"};font-weight:700">${e2(msg)}</div>`);
+        break;
+      }
+      case "quarantine-list": renderQuarantine(r); break;
+      case "mods-list": renderMods(r); break;
+      case "skins-page": renderSkins(r); break;
+      case "server-status": {
+        if (!r.host) { out(e2(msg)); break; }
+        out(`<b>${e2(r.host)}</b> · 在线 · ${r.players}/${r.max} 人<br>
+             版本 <b>${e2(r.version || "未知")}</b><br>
+             <span style="color:var(--muted)">${e2(r.motd || "")}</span>`, false);
+        break;
+      }
+      case "lan-info": out(e2(msg)); break;
+      case "stats": {
+        const per = r.perVersion || [];
+        out(`<b>${e2(r.text)}</b> · 共启动 ${r.launches} 次`
+          + (per.length ? per.map(p => `<div class="t-row"><span class="grow">${e2(p.version)}</span>
+              <span class="t-tag">${e2(p.text)}</span><span style="color:var(--muted)">${p.launches} 次</span></div>`).join("") : ""));
+        break;
+      }
+      case "download-file": out(e2(msg)); break;
+      default: out(e2(msg));
+    }
+  }
+
+  /* ---------------- 隔离区 ---------------- */
+  function renderQuarantine(r) {
+    const items = r.items || [];
+    const box = document.getElementById("qList");
+    const html = items.length
+      ? items.map(q => `<div class="canary-row" style="margin-bottom:6px">
+            <span class="k" style="color:#F87171;background:rgba(248,113,113,.14)">威胁</span>
+            <span class="p" title="${e2(q.quarantined)}">${e2(q.file)}</span>
+            <span class="s" style="display:flex;gap:6px">
+              <button class="t-btn" data-op="quarantine-restore" data-q="${e2(q.quarantined)}">恢复</button>
+              <button class="t-btn danger" data-op="quarantine-delete" data-q="${e2(q.quarantined)}">删除</button>
+            </span></div>`).join("")
+      : '<div class="meta" style="padding:6px 2px">隔离区为空 · 没有被拦截的威胁文件</div>';
+    if (box) box.innerHTML = html;
+    out(items.length ? `隔离区 ${items.length} 个样本 · ${e2(r.dir || "")}` : "隔离区为空");
+  }
+
+  /* ---------------- 模组 ---------------- */
+  function renderMods(r) {
+    const items = r.items || [];
+    const list = document.getElementById("modList");
+    const hint = document.getElementById("modHint");
+    const ver = document.getElementById("modVer");
+    if (ver) ver.textContent = (window.NEX_STATE && NEX_STATE.selected) ? ("· " + NEX_STATE.selected) : "";
+    if (hint) hint.textContent = r._msg;
+    if (!list) return;
+    if (!items.length) {
+      list.innerHTML = `<div class="meta" style="padding:10px 2px">mods 目录里还没有模组。<br>
+        <span style="color:var(--muted)">目录：${e2(r.dir || "")}</span><br><br>
+        可以在「资源下载」页搜索并从 Modrinth 一键下载。</div>`;
+      return;
+    }
+    list.innerHTML = items.map(m => `<div class="ver-item" style="margin-bottom:8px">
+        <div class="ic" style="background:${m.enabled ? "rgba(34,211,166,.14)" : "rgba(148,163,184,.16)"};color:${m.enabled ? "#12A37E" : "#64748B"}">JAR</div>
+        <div style="min-width:0"><b>${e2(m.name)}</b>
+          <div class="meta">${e2(m.size)} · ${e2(m.time)} · ${m.enabled ? "已启用" : "已停用"}</div></div>
+        <span class="now" style="display:flex;gap:6px">
+          <button class="t-btn" data-op="mod-toggle" data-file="${e2(m.file)}">${m.enabled ? "停用" : "启用"}</button>
+          <button class="t-btn danger" data-op="mod-delete" data-file="${e2(m.file)}">删除</button>
+        </span>
+      </div>`).join("");
+  }
+
+  async function loadMods() {
+    try { const r = await nexTool("mods-list", {}); renderMods(r); }
+    catch (e) { const h = document.getElementById("modHint"); if (h) h.textContent = e.message; }
+  }
+  window.__loadMods = loadMods;
+
+  /* ---------------- 皮肤（真实 Ely.by 皮肤库） ---------------- */
+  const skinState = { page: 1, kind: "", max: 20 };
+  function renderSkins(r) {
+    const grid = document.getElementById("skinGrid");
+    const pg = document.getElementById("skinPage");
+    const cnt = document.getElementById("skinCount");
+    if (r.maxPages) skinState.max = r.maxPages;
+    if (r.page) skinState.page = r.page;
+    if (pg) pg.textContent = `第 ${skinState.page} / ${skinState.max} 页`;
+    if (cnt) cnt.textContent = `已加载 ${(r.items || []).length} 个真实皮肤（Ely.by）`;
+    if (!grid) return;
+    grid.innerHTML = (r.items || []).map(s => `<div class="skin-card">
+        <div class="skin-head" style="background-image:url('${e2(s.url)}')"></div>
+        <div class="skin-meta">#${s.id} · ${s.wearers} 人使用</div>
+        <div class="skin-tags">${(s.tags || []).map(t => `<i>${e2(t)}</i>`).join("")}</div>
+        <button class="t-btn" data-op="skin-apply" data-src="${e2(s.url)}" data-slim="${s.slim ? 1 : 0}">应用</button>
+      </div>`).join("") || '<div class="meta">这一页没有内容</div>';
+  }
+  async function loadSkins(page) {
+    skinState.page = Math.min(Math.max(1, page), skinState.max);
+    const grid = document.getElementById("skinGrid");
+    if (grid && !grid.children.length) grid.innerHTML = '<div class="meta">正在从皮肤库拉取…</div>';
+    try {
+      const r = await nexTool("skins-page", { page: skinState.page, kind: skinState.kind });
+      renderSkins(r);
+    } catch (e) {
+      if (grid) grid.innerHTML = `<div class="meta">皮肤库连接失败：${e2(e.message)}</div>`;
+    }
+  }
+  window.__loadSkins = loadSkins;
+
+  document.querySelectorAll("#page-skins .cat").forEach(b => b.addEventListener("click", () => {
+    document.querySelectorAll("#page-skins .cat").forEach(x => x.classList.remove("on"));
+    b.classList.add("on");
+    skinState.kind = b.dataset.kind || "";
+    loadSkins(1);
+  }));
+  const prev = document.getElementById("skinPrev"), next = document.getElementById("skinNext");
+  if (prev) prev.onclick = () => loadSkins(skinState.page - 1);
+  if (next) next.onclick = () => loadSkins(skinState.page + 1);
+
+  /* ---------------- 设置开关（真实写 settings.json） ---------------- */
+  async function loadSettings() {
+    try {
+      const v = await nexTool("settings-get", {});
+      document.querySelectorAll("[data-setting]").forEach(sw => {
+        if (v[sw.dataset.setting] != null) sw.classList.toggle("on", !!v[sw.dataset.setting]);
+      });
+    } catch (e) { }
+  }
+  document.addEventListener("click", async ev => {
+    const sw = ev.target.closest("[data-setting]");
+    if (!sw) return;
+    ev.preventDefault(); ev.stopPropagation();
+    const next = !sw.classList.contains("on");
+    sw.classList.toggle("on", next);
+    try {
+      await nexTool("setting-set", { key: sw.dataset.setting, value: next });
+      if (typeof toast === "function") toast("已保存到 settings.json");
+    } catch (e) {
+      sw.classList.toggle("on", !next);
+      if (typeof toast === "function") toast("保存失败：" + e.message, "info");
+    }
+  }, true);
+
+  /* ---------------- 首页真实数据 ---------------- */
+  async function loadDock() {
+    let d;
+    try { d = await nexTool("dock", {}); } catch (e) { return; }
+    const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+
+    if (d.news && d.news.length) {
+      const box = document.getElementById("newsList");
+      if (box) box.innerHTML = d.news.map(n => `<div class="news-item">
+          <span class="t">${e2(n.date || "—")}</span>${e2(n.note || n.name || n.tag)}</div>`).join("");
+    }
+
+    if (d.stats) {
+      setTxt("statHours", d.stats.text || "0 分钟");
+      setTxt("statLaunches", (d.stats.launches || 0) + " 次");
+      setTxt("lastPlayTxt", d.stats.lastVersion
+        ? `最近游玩 · ${d.stats.lastVersion} · ${d.stats.lastPlayed}`
+        : "还没有游玩记录");
+    }
+    if (d.resources) {
+      setTxt("resMods", d.resources.mods);
+      setTxt("resSaves", d.resources.saves);
+      setTxt("resRp", d.resources.resourcepacks);
+      setTxt("resSp", d.resources.shaderpacks);
+    }
+    if (d.ram) {
+      setTxt("ramTxt", d.ram.max);
+      const bar = document.getElementById("ramBar");
+      if (bar && d.ram.total) bar.style.width = Math.min(100, Math.round(d.ram.max * 100 / d.ram.total)) + "%";
+      const lbl = document.getElementById("ramLbl");
+      if (lbl) lbl.textContent = `当前 ${d.ram.max} MB · 本机 ${d.ram.total} MB · 推荐 ${d.ram.recommended} MB`;
+    }
+    if (d.java) setTxt("javaTxt", d.java.found ? d.java.title : "未检测到 Java");
+    if (d.security) {
+      setTxt("homeSecMeta", d.security.guardRunning
+        ? `五道防线 · 守护进程 ${d.security.pid} · 已守护 ${d.security.uptime}`
+        : "五道防线 · 进程内监控中");
+    }
+
+    /* 版本分布柱状图（真实按版本时长） */
+    try {
+      const st = await nexTool("stats", {});
+      const bars = document.getElementById("statBars");
+      if (bars && st.perVersion && st.perVersion.length) {
+        bars.innerHTML = st.perVersion.slice(0, 7).map(p =>
+          `<i style="height:${Math.max(8, Math.round(p.seconds * 100 / (st.max || 1)))}%" title="${e2(p.version)} · ${e2(p.text)}"></i>`).join("");
+      }
+    } catch (e) { }
+  }
+  window.__loadDock = loadDock;
+
+  /* ---------------- 首次进入各页时懒加载真实数据 ---------------- */
+  const inited = {};
+  document.addEventListener("click", ev => {
+    const nav = ev.target.closest("[data-page],[data-goto]");
+    if (!nav) return;
+    const page = nav.dataset.page || nav.dataset.goto;
+    setTimeout(() => {
+      if (page === "mods" && !inited.mods) { inited.mods = true; loadMods(); }
+      if (page === "skins" && !inited.skins) { inited.skins = true; loadSkins(1); }
+      if (page === "security" && !inited.sec) { inited.sec = true; nexTool("quarantine-list", {}).then(renderQuarantine).catch(() => { }); }
+      if ((page === "settings" || page === "security") && !inited.set) { inited.set = true; loadSettings(); }
+    }, 80);
+  });
+
+  /* 刷新模组按钮 */
+  const mr = document.getElementById("modReload");
+  if (mr) mr.onclick = () => loadMods();
+
+  /* 启动即拉一次首页真实数据 + 设置项 */
+  setTimeout(() => { loadDock(); loadSettings(); }, 400);
+  setTimeout(() => {
+    const grid = document.getElementById("skinGrid");
+    if (grid && !grid.children.length) loadSkins(1);
+  }, 1200);
+})();
+</script>
