@@ -150,6 +150,11 @@ public partial class MainWindow : Window
         InitializeComponent();
         // 第一优先级：立刻开始创建 WebView2 运行时环境（约 1~3 秒），与后续构造工作并行
         _ = GetEnvironmentAsync();
+        // 后台预取离线皮肤注入器（authlib-injector），让「应用皮肤」一点即生效
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            try { await Services.LocalSkinServer.Instance.EnsureAgentAsync(); } catch { }
+        });
         _minecraftService = new MinecraftService(_gameDirectory);
         _serverDirectoryService = new ServerDirectoryService(_gameDirectory);
         PageHost.RenderTransform = new TranslateTransform(0, 0);

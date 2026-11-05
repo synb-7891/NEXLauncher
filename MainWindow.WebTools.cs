@@ -147,7 +147,7 @@ public partial class MainWindow
             /* ---------------- 皮肤 ---------------- */
             case "skins-page": await SkinsPageAsync(op, Int(a, "page", 1), Str(a, "kind")); break;
             case "skin-apply": await SkinApplyAsync(op, Str(a, "url"), Bool(a, "slim")); break;
-            case "skin-upload": SkinUpload(op); break;
+            case "skin-upload": await SkinUploadAsync(op); break;
             case "open-url": OpenUrlSafe(Str(a, "url")); ToolReply(op, true, "已在浏览器打开"); break;
 
             /* ---------------- 统计 / 公告 ---------------- */
@@ -924,6 +924,18 @@ public partial class MainWindow
             var name = _session?.Username;
             if (string.IsNullOrWhiteSpace(name)) name = _settings.LastOfflineName;
             if (string.IsNullOrWhiteSpace(name)) name = "Player";
+
+            // 关键：必须先把 authlib-injector 准备好，否则启动时无法注入皮肤代理，
+            // 游戏里根本看不到这套皮肤（表现为「应用了没变化」）。
+            ToolStage(op, "正在准备皮肤组件…");
+            var agentErr = await LocalSkinServer.Instance.EnsureAgentAsync();
+            if (agentErr != null)
+            {
+                ToolReply(op, false, "皮肤组件（authlib-injector）下载失败：" + agentErr + "，请检查网络后重试",
+                    new { path });
+                return;
+            }
+
             var ok = LocalSkinServer.Instance.ApplySkin(path, slim ? "slim" : "wide", name);
             _settings.OfflineSkinPath = path;
             _settings.OfflineSkinModel = slim ? "slim" : "wide";
@@ -935,7 +947,7 @@ public partial class MainWindow
         catch (Exception ex) { ToolReply(op, false, "应用失败：" + ex.Message); }
     }
 
-    private void SkinUpload(string op)
+    private async Task SkinUploadAsync(string op)
     {
         string? file = null;
         Dispatcher.Invoke(() =>
@@ -949,6 +961,13 @@ public partial class MainWindow
             var name = _session?.Username;
             if (string.IsNullOrWhiteSpace(name)) name = _settings.LastOfflineName;
             if (string.IsNullOrWhiteSpace(name)) name = "Player";
+            // 同「皮肤站应用」：先保证注入器就绪，否则游戏里不会显示
+            var agentErr = await LocalSkinServer.Instance.EnsureAgentAsync();
+            if (agentErr != null)
+            {
+                ToolReply(op, false, "皮肤组件（authlib-injector）下载失败：" + agentErr + "，请检查网络后重试");
+                return;
+            }
             var ok = LocalSkinServer.Instance.ApplySkin(file, "wide", name);
             _settings.OfflineSkinPath = file;
             _settings.OfflineSkinPlayer = name;

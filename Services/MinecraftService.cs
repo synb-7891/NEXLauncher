@@ -352,6 +352,20 @@ public sealed class MinecraftService
             _installLock.Release();
         }
 
+        // 离线皮肤兜底：注入器缺失时临时补下载（最多等 25 秒），
+        // 否则启动参数里没有 -javaagent，游戏里看到的还是默认皮肤。
+        if (session.UserType == "legacy" && !string.IsNullOrWhiteSpace(settings.OfflineSkinPath)
+            && File.Exists(settings.OfflineSkinPath) && !LocalSkinServer.Instance.AgentReady)
+        {
+            try
+            {
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                cts.CancelAfter(TimeSpan.FromSeconds(25));
+                await LocalSkinServer.Instance.EnsureAgentAsync(cts.Token);
+            }
+            catch { /* 下载失败不阻塞启动：本次先不带皮肤 */ }
+        }
+
         var option = CreateLaunchOption(versionId, _gameDirectory, session, settings, extraGameArgs);
 
         Process process;

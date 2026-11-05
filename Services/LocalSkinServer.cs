@@ -32,6 +32,14 @@ public sealed class LocalSkinServer
     private RSA? _rsa;
     private string? _publicKeyPem;
 
+    // 皮肤内容指纹：拼到皮肤 URL 上做缓存穿透。
+    // 客户端（1.19+）会按 URL 缓存贴图到 .minecraft/assets/skins，URL 不变就一直用旧图，
+    // 换皮肤后不生效基本都是这个原因。
+    private string _skinStamp = "0";
+
+    // agent 下载失败后的冷却，避免每次启动都卡在网络请求上
+    private DateTime _agentLastTry = DateTime.MinValue;
+
     /// <summary>authlib-injector 是否已就绪（jar 已下载）。</summary>
     public bool AgentReady => File.Exists(AgentJarPath);
 
@@ -56,6 +64,7 @@ public sealed class LocalSkinServer
             SkinPath = skinPath;
             Model = model == "slim" ? "slim" : "wide";
             PlayerName = playerName;
+            _skinStamp = Stamp(skinPath);
             EnsureKey();
             EnsureStarted();
             return true;
@@ -64,6 +73,19 @@ public sealed class LocalSkinServer
         {
             return false;
         }
+    }
+
+    /// <summary>皮肤内容指纹（长度 + 内容哈希），用于让客户端重新下载贴图。</summary>
+    private static string Stamp(string skinPath)
+    {
+        try
+        {
+            if (!File.Exists(skinPath)) return "0";
+            var bytes = File.ReadAllBytes(skinPath);
+            var hash = SHA256.HashData(bytes);
+            return Convert.ToHexString(hash.AsSpan(0, 4)).ToLowerInvariant();
+        }
+        catch { return "0"; }
     }
 
     /// <summary>加载或生成签名密钥对（RSA-2048，PEM 持久化）。</summary>
@@ -119,9 +141,26 @@ public sealed class LocalSkinServer
         _thread.Start();
     }
 
-    private void ListenLoop()
+    /// <summary>记录一次请求，便于确认游戏是否真的来取皮肤（诊断「应用了但没变化」）。</summary>
+    private static void LogHit(string path, string query)
     {
-        var listener = _listener!;
+        try
+        {
+            var log = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "NEXLauncher", "skin-server.log");
+            var line = $"[{DateTime.Now:HH:mm:ss.fff}] {path}{query}\n";
+            // 只保留最近 200 行，避免无限增长
+            var fi = new FileInfo(log);
+            if (fi.Exists && fi.Length > 64 * 1024)
+                File.WriteAllText(log, "");
+            File.AppendAllText(log, line);
+        }
+        catch { }
+    }
+
+    private void ListenLoop()
+    {        var listener = _listener!;
         while (listener.IsListening)
         {
             HttpListenerContext ctx;
@@ -137,6 +176,7 @@ public sealed class LocalSkinServer
     private void Handle(HttpListenerContext ctx)
     {
         var path = ctx.Request.Url?.AbsolutePath ?? "/";
+        LogHit(path, ctx.Request.Url?.Query ?? "");
 
         // authlib-injector 启动时先请求根地址拿元数据：
         // 顶层 skinDomains + signaturePublickey（签名公钥），meta 里是展示信息
@@ -191,6 +231,7 @@ public sealed class LocalSkinServer
         if (path.StartsWith("/skins/") && path.EndsWith(".png") && SkinPath != null && File.Exists(SkinPath))
         {
             ctx.Response.ContentType = "image/png";
+            ctx.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
             var bytes = File.ReadAllBytes(SkinPath);
             ctx.Response.ContentLength64 = bytes.Length;
             ctx.Response.OutputStream.Write(bytes, 0, bytes.Length);
@@ -222,7 +263,7 @@ public sealed class LocalSkinServer
             return "{\"id\":\"" + uuid + "\",\"name\":\"" + playerName + "\",\"properties\":[]}";
         }
 
-        var skinUrl = $"http://127.0.0.1:{Port}/skins/skin.png";
+        var skinUrl = $"http://127.0.0.1:{Port}/skins/skin.png?v={_skinStamp}";
         var textures = Model == "slim"
             ? "{\"SKIN\":{\"url\":\"" + skinUrl + "\",\"metadata\":{\"model\":\"slim\"}}}"
             : "{\"SKIN\":{\"url\":\"" + skinUrl + "\"}}";
@@ -248,26 +289,52 @@ public sealed class LocalSkinServer
         ctx.Response.OutputStream.Close();
     }
 
-    /// <summary>下载 authlib-injector（官方国内镜像）。返回错误信息，成功返回 null。</summary>
+    /// <summary>
+    /// 下载 authlib-injector（官方源 + GitHub 备用）。返回错误信息，成功返回 null。
+    /// 这是「离线皮肤」生效的必备组件：没有它，游戏不会去问本地皮肤服务器要贴图。
+    /// </summary>
     public async Task<string?> EnsureAgentAsync(CancellationToken ct = default)
     {
         if (AgentReady) return null;
+        // 失败冷却 60 秒：避免网络不通时每次启动/每次点应用都长时间等待
+        if (_agentLastError != null && (DateTime.Now - _agentLastTry).TotalSeconds < 60) return _agentLastError;
+        _agentLastTry = DateTime.Now;
+
+        var urls = new List<string>();
         try
         {
             var meta = await Http.GetStringAsync("https://authlib-injector.yushi.moe/artifact/latest.json", ct);
             using var doc = JsonDocument.Parse(meta);
-            var url = doc.RootElement.GetProperty("download_url").GetString()!;
-            var bytes = await Http.GetByteArrayAsync(url, ct);
+            var u = doc.RootElement.TryGetProperty("download_url", out var du) ? du.GetString() : null;
+            if (!string.IsNullOrWhiteSpace(u)) urls.Add(u!);
+        }
+        catch (Exception ex) { _agentLastError = "获取版本信息失败：" + ex.Message; }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(AgentJarPath)!);
-            await File.WriteAllBytesAsync(AgentJarPath, bytes, ct);
-            return null;
-        }
-        catch (Exception ex)
+        // 备用源（GitHub 直链，1.2.8 为当前稳定版）
+        urls.Add("https://authlib-injector.yushi.moe/artifact/56/authlib-injector-1.2.8.jar");
+        urls.Add("https://github.com/yushijinhun/authlib-injector/releases/download/v1.2.8/authlib-injector-1.2.8.jar");
+
+        foreach (var url in urls.Distinct())
         {
-            return ex.Message;
+            try
+            {
+                var bytes = await Http.GetByteArrayAsync(url, ct);
+                if (bytes.Length < 50_000 || bytes[0] != 0x50 || bytes[1] != 0x4B)
+                {
+                    _agentLastError = "下载到的文件不是有效的 jar";
+                    continue;
+                }
+                Directory.CreateDirectory(Path.GetDirectoryName(AgentJarPath)!);
+                await File.WriteAllBytesAsync(AgentJarPath, bytes, ct);
+                _agentLastError = null;
+                return null;
+            }
+            catch (Exception ex) { _agentLastError = ex.Message; }
         }
+        return _agentLastError ?? "下载失败";
     }
+
+    private string? _agentLastError;
 
     /// <summary>给游戏启动用的 -javaagent 参数（authlib-injector 就绪且皮肤已设置时返回）。</summary>
     public string? GetAgentArgument()
