@@ -334,6 +334,14 @@ public sealed class SecurityService : IDisposable
         }
         // 4 秒内 ≥150 次文件改写 = 批量加密特征（正常使用达不到；复制大量文件也可能触发，但只告警不动文件）
         if (count < 150) return;
+        // 游戏目录白名单：Minecraft 启动 / 存档 / 资源更新会在 .minecraft 下短时间大量写文件，
+        // 这是游戏正常行为，不是勒索加密 —— 全部落点都在 .minecraft 内时跳过报警与拦截。
+        var gameRoot = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ".minecraft")
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        if (roots.All(r => string.Equals(r, gameRoot.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase)
+                          || r.StartsWith(gameRoot, StringComparison.OrdinalIgnoreCase)))
+            return;
         if ((DateTime.Now - _lastBurstAlert).TotalSeconds < 60) return;
         _lastBurstAlert = DateTime.Now;
 

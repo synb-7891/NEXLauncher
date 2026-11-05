@@ -184,10 +184,11 @@ public partial class MainWindow : Window
             ApplyBackgroundImage(_settings.BackgroundImagePath);
 
         // 游戏进程跟踪：显示 / 隐藏右下角强杀按钮
-        _minecraftService.GameStarted += (_, _) => Dispatcher.Invoke(() =>
+        _minecraftService.GameStarted += (_, e) => Dispatcher.Invoke(() =>
         {
             KillGameButton.Visibility = Visibility.Visible;
             SideLaunchButton.Content = "● 游戏运行中";
+            BringGameWindowToFront(e); // 窗口一出现就自动前置，避免用户误以为启动卡住
         });
         _minecraftService.GameExited += (_, _) => Dispatcher.Invoke(() =>
         {
@@ -6237,4 +6238,30 @@ public partial class MainWindow : Window
 
     private static SolidColorBrush Brush(string c) => new((Color)ColorConverter.ConvertFromString(c));
     #endregion
+
+    // ---- 游戏窗口前置：窗口一弹出就切到前台，避免用户停留在启动器误以为启动卡住 ----
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    private static async void BringGameWindowToFront(Process game)
+    {
+        try
+        {
+            // Minecraft 启动到出窗口通常 30~150 秒（首次更久），轮询等窗口句柄出现
+            for (var i = 0; i < 150 && !game.HasExited; i++)
+            {
+                await Task.Delay(1000);
+                try { game.Refresh(); } catch { }
+                var h = game.MainWindowHandle;
+                if (h == IntPtr.Zero) continue;
+                ShowWindow(h, 5);            // SW_SHOW
+                SetForegroundWindow(h);
+                return;
+            }
+        }
+        catch { /* 进程已退出等情况忽略 */ }
+    }
 }

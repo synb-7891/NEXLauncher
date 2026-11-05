@@ -371,6 +371,9 @@ public sealed class MinecraftService
         process.EnableRaisingEvents = true;
         PlaytimeStatsService.Instance.AttachProcess(versionId, process);
 
+        // 双显卡机器：为该 Java 注册「高性能 GPU」偏好，避免游戏跑在核显上导致加载与渲染缓慢
+        TrySetHighPerformanceGpu(process.StartInfo.FileName);
+
         lock (_gameProcesses) _gameProcesses.Add(process);
         process.Exited += (_, _) =>
         {
@@ -443,5 +446,24 @@ public sealed class MinecraftService
             || lower.Contains("potato") || lower.Contains("craftmine") || lower.Contains("or_b")))
             return true;
         return false;
+    }
+
+    /// <summary>
+    /// 双显卡机器：把指定可执行文件注册为「高性能 GPU」偏好（Windows 图形设置），
+    /// 避免 Java 游戏进程被分配到核显导致加载 / 渲染缓慢。静默失败不影响启动。
+    /// </summary>
+    private static void TrySetHighPerformanceGpu(string? exePath)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(exePath) || !File.Exists(exePath)) return;
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\DirectX\UserGpuPreferences", writable: true)
+                ?? Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\DirectX\UserGpuPreferences");
+            var existing = key.GetValue(exePath) as string;
+            if (existing is not null && existing.Contains("GpuPreference=2;")) return;
+            key.SetValue(exePath, "GpuPreference=2;");
+        }
+        catch { /* 注册表不可写等情况直接忽略，不影响游戏启动 */ }
     }
 }

@@ -1989,6 +1989,7 @@ btnLaunch.addEventListener("click",()=>{
   }
   if(!NEX_APP){ toast("浏览器预览模式：启动游戏需要启动器本体"); return; }
   launchAnimStart(ver);
+  toast("正在启动 "+ver+"，窗口弹出约需 1~2 分钟，请勿重复点击");
   nexPost({cmd:"launch", version:ver});
 });
 
@@ -2908,7 +2909,7 @@ if(NEX_APP){
       setTxt("resSp", d.resources.shaderpacks);
     }
     if (d.ram) {
-      setTxt("ramTxt", d.ram.max);
+      setTxt("ramTxt", (d.ram.max/1024).toFixed(1));
       const bar = document.getElementById("ramBar");
       if (bar && d.ram.total) bar.style.width = Math.min(100, Math.round(d.ram.max * 100 / d.ram.total)) + "%";
       const lbl = document.getElementById("ramLbl");
