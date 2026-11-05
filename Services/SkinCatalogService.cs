@@ -15,22 +15,29 @@ public record SkinItem(
     int Wearers);
 
 /// <summary>
-/// 皮肤目录服务：接入 Ely.by 公开皮肤库（10000+ 皮肤），启动器内固定提供 20 页浏览。
+/// 皮肤目录服务：接入 Ely.by 公开皮肤库（共 10000 个 / 接口 250 页 × 40 个）。
+/// 对用户展示为 1000 页 × 每页 10 个：把接口的每一页切成 4 个展示页，
+/// 正好覆盖皮肤库全部内容。
 /// 接口：GET https://ely.by/api/legacy/skins?page=N
 /// </summary>
 public sealed class SkinCatalogService
 {
-    /// <summary>提供给用户的最大页数（每页 40 个）。</summary>
-    public const int MaxPages = 20;
-    public const int PageSize = 40;
+    /// <summary>提供给用户的最大页数（每页 10 个皮肤，1~1000 页）。</summary>
+    public const int MaxPages = 1000;
+
+    /// <summary>每一展示页显示的皮肤数。</summary>
+    public const int PageSize = 10;
+
+    /// <summary>接口每页固定返回 40 个（limit 参数被接口忽略）。</summary>
+    private const int ApiPageSize = 40;
 
     private static readonly HttpClient Http = new()
     {
         Timeout = TimeSpan.FromSeconds(20)
     };
 
-    // 页码缓存：同一页不重复请求
-    private static readonly Dictionary<int, IReadOnlyList<SkinItem>> Cache = new();
+    // 接口页缓存：key = "接口页码|分类"，同一接口页不重复请求
+    private static readonly Dictionary<string, IReadOnlyList<SkinItem>> Cache = new();
 
     /// <summary>皮肤分类（对应 ely.by 的 kind 参数）。</summary>
     public static readonly (string Key, string Label)[] Kinds =
@@ -53,10 +60,33 @@ public sealed class SkinCatalogService
         CancellationToken ct = default)
     {
         page = Math.Clamp(page, 1, MaxPages);
-        var key = page * 100 + (kind?.GetHashCode() % 100 ?? 0);
-        if (Cache.TryGetValue(key, out var cached)) return cached;
+        // 展示页 → 接口页换算：接口每页 40 个，展示每页 10 个，一个接口页切 4 个展示页
+        var apiPage = (page + PageSize - 1) / (ApiPageSize / PageSize);
+        var slice = (page - 1) % (ApiPageSize / PageSize);
+        var key = $"{apiPage}|{kind}";
+        IReadOnlyList<SkinItem> apiItems;
+        IReadOnlyList<SkinItem>? cached;
+        lock (Cache) Cache.TryGetValue(key, out cached);
+        if (cached is not null)
+        {
+            apiItems = cached;
+        }
+        else
+        {
+            apiItems = await FetchApiPageAsync(apiPage, kind, ct);
+            lock (Cache) Cache[key] = apiItems;
+        }
 
-        var url = $"https://ely.by/api/legacy/skins?page={page}&limit={PageSize}";
+        var start = slice * PageSize;
+        if (start >= apiItems.Count) return Array.Empty<SkinItem>();
+        return apiItems.Skip(start).Take(PageSize).ToList();
+    }
+
+    /// <summary>请求一个接口页（40 个皮肤），完成黑名单过滤。</summary>
+    private async Task<IReadOnlyList<SkinItem>> FetchApiPageAsync(int apiPage, string kind,
+        CancellationToken ct)
+    {
+        var url = $"https://ely.by/api/legacy/skins?page={apiPage}&limit={ApiPageSize}";
         if (!string.IsNullOrEmpty(kind)) url += $"&kind={Uri.EscapeDataString(kind)}";
 
         using var resp = await Http.GetAsync(url, ct);
@@ -77,8 +107,8 @@ public sealed class SkinCatalogService
                     foreach (var t in tg.EnumerateArray())
                         tags.Add(t.GetString() ?? "");
 
-                // 内容安全：跳过标签明显不当的皮肤
-                if (tags.Any(t => SkinTagBlocklist.Contains(t.ToLowerInvariant()))) continue;
+                // 内容安全：标签命中黑名单（包含式匹配，如 "Adolf Hitler" 命中 "adolf"）的皮肤直接跳过
+                if (tags.Any(t => IsBlockedTag(t))) continue;
 
                 result.Add(new SkinItem(
                     it.TryGetProperty("id", out var id) ? id.GetInt32() : 0,
@@ -90,7 +120,6 @@ public sealed class SkinCatalogService
             }
         }
 
-        Cache[key] = result;
         return result;
     }
 
@@ -110,4 +139,11 @@ public sealed class SkinCatalogService
         "porn", "pornhub", "nude", "nudes", "nsfw", "sex", "xxx", "hitler", "adolf", "nazi",
         "isis", "pornographic", "hentai", "boobs", "naked", "18+", "r18"
     };
+
+    /// <summary>包含式匹配：标签里出现任一黑名单词即拦截（如 "Adolf Hitler" 命中 "adolf"）。</summary>
+    private static bool IsBlockedTag(string tag)
+    {
+        var t = tag.ToLowerInvariant();
+        return SkinTagBlocklist.Any(b => t.Contains(b));
+    }
 }

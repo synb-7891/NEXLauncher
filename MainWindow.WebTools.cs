@@ -921,7 +921,9 @@ public partial class MainWindow
             Directory.CreateDirectory(dir);
             var path = Path.Combine(dir, $"nex_{DateTime.Now:yyyyMMddHHmmss}.png");
             await File.WriteAllBytesAsync(path, bytes);
-            var name = _session?.Username ?? (_settings.LastOfflineName ?? "Player");
+            var name = _session?.Username;
+            if (string.IsNullOrWhiteSpace(name)) name = _settings.LastOfflineName;
+            if (string.IsNullOrWhiteSpace(name)) name = "Player";
             var ok = LocalSkinServer.Instance.ApplySkin(path, slim ? "slim" : "wide", name);
             _settings.OfflineSkinPath = path;
             _settings.OfflineSkinModel = slim ? "slim" : "wide";
@@ -944,7 +946,9 @@ public partial class MainWindow
         if (file == null) { ToolReply(op, false, "已取消"); return; }
         try
         {
-            var name = _session?.Username ?? (_settings.LastOfflineName ?? "Player");
+            var name = _session?.Username;
+            if (string.IsNullOrWhiteSpace(name)) name = _settings.LastOfflineName;
+            if (string.IsNullOrWhiteSpace(name)) name = "Player";
             var ok = LocalSkinServer.Instance.ApplySkin(file, "wide", name);
             _settings.OfflineSkinPath = file;
             _settings.OfflineSkinPlayer = name;

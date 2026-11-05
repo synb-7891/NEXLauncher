@@ -1013,12 +1013,25 @@ body.is-mobile .tabbar{display:flex}
         <div class="skin-grid" id="skinGrid"></div>
         <div class="skin-foot">
           <button class="abtn" id="skinPrev">上一页</button>
-          <span style="font-size:12px;color:var(--muted)" id="skinPage">第 1 / 20 页</span>
+          <span style="font-size:12px;color:var(--accent);cursor:pointer;text-decoration:underline dotted" id="skinPage" title="点击选择页码">第 1 / 1000 页</span>
           <button class="abtn" id="skinNext">下一页</button>
           <button class="abtn primary" data-op="skin-upload">上传本地皮肤</button>
           <button class="abtn" data-op="open-folder" data-which="skins">打开皮肤文件夹</button>
           <button class="abtn" data-op="open-url" data-url="https://littleskin.cn/">LittleSkin 皮肤站</button>
           <button class="abtn" data-op="open-url" data-url="https://namemc.com/">NameMC 查询</button>
+        </div>
+        <div id="skinJump" style="display:none;position:relative">
+          <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);z-index:30;width:min(560px,92%);
+                      background:var(--card,#fff);border:1px solid var(--line,#e5e7eb);border-radius:14px;
+                      box-shadow:0 12px 40px rgba(30,40,70,.18);padding:12px 14px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px">
+              <b style="font-size:13px">跳转到页码</b>
+              <input id="skinJumpInput" type="number" min="1" max="1000" placeholder="输入 1~1000 回车跳转"
+                     style="flex:1;height:28px;border:1px solid var(--line,#e5e7eb);border-radius:8px;padding:0 9px;font-size:12px;outline:none;background:transparent;color:inherit">
+              <button class="abtn" id="skinJumpClose" style="height:28px;padding:0 10px">关闭</button>
+            </div>
+            <div id="skinJumpGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(44px,1fr));gap:4px;max-height:220px;overflow:auto"></div>
+          </div>
         </div>
       </section>
 
@@ -2741,6 +2754,11 @@ if(NEX_APP){
       case "quarantine-list": renderQuarantine(r); break;
       case "mods-list": renderMods(r); break;
       case "skins-page": renderSkins(r); break;
+      case "skin-apply": {
+        /* 皮肤页点「应用」的直接反馈：原生失败走 reject 已有 toast，这里补成功提示 */
+        toast(r._msg || "皮肤已应用，下次启动游戏生效");
+        break;
+      }
       case "server-status": {
         if (!r.host) { out(e2(msg)); break; }
         out(`<b>${e2(r.host)}</b> · 在线 · ${r.players}/${r.max} 人<br>
@@ -2818,8 +2836,8 @@ if(NEX_APP){
   }
   window.__loadMods = loadMods;
 
-  /* ---------------- 皮肤（真实 Ely.by 皮肤库） ---------------- */
-  const skinState = { page: 1, kind: "", max: 20 };
+  /* ---------------- 皮肤（真实 Ely.by 皮肤库，1000 页 × 10 个） ---------------- */
+  const skinState = { page: 1, kind: "", max: 1000 };
   function renderSkins(r) {
     const grid = document.getElementById("skinGrid");
     const pg = document.getElementById("skinPage");
@@ -2827,14 +2845,15 @@ if(NEX_APP){
     if (r.maxPages) skinState.max = r.maxPages;
     if (r.page) skinState.page = r.page;
     if (pg) pg.textContent = `第 ${skinState.page} / ${skinState.max} 页`;
-    if (cnt) cnt.textContent = `已加载 ${(r.items || []).length} 个真实皮肤（Ely.by）`;
+    if (cnt) cnt.textContent = `每页 10 个 · 共约 ${(skinState.max * 10 / 10000).toFixed(1)} 万个皮肤（Ely.by）`;
+    if (jumpGrid && jumpWrap && jumpWrap.style.display !== "none") highlightSkinJump();
     if (!grid) return;
     grid.innerHTML = (r.items || []).map(s => `<div class="skin-card">
         <div class="skin-head" style="background-image:url('${e2(s.url)}')"></div>
         <div class="skin-meta">#${s.id} · ${s.wearers} 人使用</div>
         <div class="skin-tags">${(s.tags || []).map(t => `<i>${e2(t)}</i>`).join("")}</div>
         <button class="t-btn" data-op="skin-apply" data-src="${e2(s.url)}" data-slim="${s.slim ? 1 : 0}">应用</button>
-      </div>`).join("") || '<div class="meta">这一页没有内容</div>';
+      </div>`).join("") || '<div class="meta">这一页没有内容（可能被该分类过滤完了），换个页码试试</div>';
   }
   async function loadSkins(page) {
     skinState.page = Math.min(Math.max(1, page), skinState.max);
@@ -2858,6 +2877,55 @@ if(NEX_APP){
   const prev = document.getElementById("skinPrev"), next = document.getElementById("skinNext");
   if (prev) prev.onclick = () => loadSkins(skinState.page - 1);
   if (next) next.onclick = () => loadSkins(skinState.page + 1);
+
+  /* ---- 页码跳转：点翻页中间的页数，弹出 1~1000 全部页码，点哪个跳哪页 ---- */
+  const jumpWrap = document.getElementById("skinJump");
+  const jumpGrid = document.getElementById("skinJumpGrid");
+  let jumpBuilt = false;
+  function openSkinJump(){
+    if (!jumpWrap) return;
+    jumpWrap.style.display = jumpWrap.style.display === "none" ? "" : "none";
+    if (jumpWrap.style.display === "none") return;
+    if (!jumpBuilt && jumpGrid){
+      /* 一次性生成 1~1000 全部页码按钮 */
+      let html = "";
+      for (let i = 1; i <= skinState.max; i++) html += `<button class="sjump" data-p="${i}" style="height:24px;font-size:11px;border:1px solid var(--line,#e5e7eb);border-radius:6px;background:transparent;color:inherit;cursor:pointer">${i}</button>`;
+      jumpGrid.innerHTML = html;
+      jumpBuilt = true;
+      jumpGrid.addEventListener("click", ev => {
+        const b = ev.target.closest(".sjump");
+        if (!b) return;
+        closeSkinJump();
+        loadSkins(+b.dataset.p);
+      });
+    }
+    highlightSkinJump();
+    const inp = document.getElementById("skinJumpInput");
+    if (inp){ inp.value = skinState.page; inp.onkeydown = e => { if (e.key === "Enter"){ const p = Math.min(Math.max(1, +inp.value || 1), skinState.max); closeSkinJump(); loadSkins(p); } }; }
+    /* 滚到当前页 */
+    requestAnimationFrame(() => {
+      const cur = jumpGrid && jumpGrid.querySelector(".sjump.cur");
+      if (cur) cur.scrollIntoView({ block: "center" });
+    });
+  }
+  function closeSkinJump(){ if (jumpWrap) jumpWrap.style.display = "none"; }
+  function highlightSkinJump(){
+    if (!jumpGrid) return;
+    jumpGrid.querySelectorAll(".sjump").forEach(b => {
+      const cur = +b.dataset.p === skinState.page;
+      b.classList.toggle("cur", cur);
+      b.style.background = cur ? "var(--accent,#4f7cff)" : "transparent";
+      b.style.color = cur ? "#fff" : "inherit";
+      b.style.borderColor = cur ? "var(--accent,#4f7cff)" : "var(--line,#e5e7eb)";
+    });
+  }
+  const skinPageEl = document.getElementById("skinPage");
+  if (skinPageEl) skinPageEl.onclick = openSkinJump;
+  const sjc = document.getElementById("skinJumpClose");
+  if (sjc) sjc.onclick = closeSkinJump;
+  document.addEventListener("click", e => {
+    if (jumpWrap && jumpWrap.style.display !== "none" && !e.target.closest("#skinJump") && !e.target.closest("#skinPage")) closeSkinJump();
+  }, true);
 
   /* ---------------- 设置开关（真实写 settings.json） ---------------- */
   async function loadSettings() {
