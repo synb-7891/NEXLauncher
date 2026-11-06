@@ -968,14 +968,39 @@ public partial class MainWindow
             new { dir, items, count = items.Count });
     }
 
+    /// <summary>
+    /// 把界面上传来的文件名解析成真实文件：同名、带/不带 .disabled、大小写不同的都认。
+    /// 前端列表可能停留在切换前的状态（旧名字），只按原名找会误报「文件不存在」。
+    /// </summary>
+    private static string? ResolveModFile(string dir, string file)
+    {
+        if (string.IsNullOrWhiteSpace(file)) return null;
+        var direct = Path.Combine(dir, file);
+        if (File.Exists(direct)) return direct;
+
+        var baseName = file.EndsWith(".disabled", StringComparison.OrdinalIgnoreCase) ? file[..^9] : file;
+        foreach (var candidate in new[] { baseName, baseName + ".disabled" })
+        {
+            var p = Path.Combine(dir, candidate);
+            if (File.Exists(p)) return p;
+        }
+
+        if (!Directory.Exists(dir)) return null;
+        return new DirectoryInfo(dir).GetFiles("*.jar*")
+            .FirstOrDefault(f => string.Equals(f.Name, baseName, StringComparison.OrdinalIgnoreCase)
+                              || string.Equals(f.Name, baseName + ".disabled", StringComparison.OrdinalIgnoreCase))
+            ?.FullName;
+    }
+
     private void ModToggle(string op, string file)
     {
         var dir = ModuleDir;
-        var path = Path.Combine(dir, file);
-        if (!File.Exists(path)) { ToolReply(op, false, "文件不存在，可能已被移动"); return; }
+        var path = ResolveModFile(dir, file);
+        if (path == null) { ToolReply(op, false, "文件不存在，可能已被移动"); return; }
         try
         {
-            if (file.EndsWith(".disabled", StringComparison.OrdinalIgnoreCase))
+            // 以磁盘上的真实文件名判断方向，不信界面传来的名字
+            if (path.EndsWith(".disabled", StringComparison.OrdinalIgnoreCase))
             {
                 var target = path[..^9];
                 File.Move(path, target, true);
@@ -985,7 +1010,7 @@ public partial class MainWindow
             {
                 var target = path + ".disabled";
                 File.Move(path, target, true);
-                ToolReply(op, true, "已停用 " + file, new { enabled = false });
+                ToolReply(op, true, "已停用 " + Path.GetFileName(path), new { enabled = false });
             }
         }
         catch (Exception ex) { ToolReply(op, false, "操作失败：" + ex.Message); }
@@ -993,9 +1018,9 @@ public partial class MainWindow
 
     private void ModDelete(string op, string file)
     {
-        var path = Path.Combine(ModuleDir, file);
-        if (!File.Exists(path)) { ToolReply(op, false, "文件不存在"); return; }
-        try { File.Delete(path); ToolReply(op, true, "已删除 " + file); }
+        var path = ResolveModFile(ModuleDir, file);
+        if (path == null) { ToolReply(op, false, "文件不存在（可能已经删掉了，点「刷新」更新列表）"); return; }
+        try { File.Delete(path); ToolReply(op, true, "已删除 " + Path.GetFileName(path)); }
         catch (Exception ex) { ToolReply(op, false, "删除失败：" + ex.Message); }
     }
 

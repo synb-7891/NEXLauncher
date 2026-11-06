@@ -2862,6 +2862,19 @@ if(NEX_APP){
       }
       case "quarantine-list": renderQuarantine(r); break;
       case "mods-list": renderMods(r); break;
+      /* 启用/停用/删除后必须重新拉一次列表：否则按钮还带着切换前的旧文件名
+         （.disabled 有无相反），再点就只会报「文件不存在，可能已被移动」 */
+      case "mod-toggle":
+      case "mod-delete": {
+        if (typeof toast === "function") toast(msg);
+        /* loadMods 在模组页自己的作用域里（对外只挂了 window.__loadMods），
+           直接写 loadMods 会 ReferenceError，列表就不刷新 → 按钮带着旧文件名 */
+        setTimeout(() => {
+          const f = window.__loadMods || (typeof loadMods === "function" ? loadMods : null);
+          if (f) f();
+        }, 60);
+        break;
+      }
       case "skins-page": renderSkins(r); break;
       case "skin-apply": {
         /* 皮肤页点「应用」：显示原生返回的真实结果（含公网可见性与游戏内生效方式） */
