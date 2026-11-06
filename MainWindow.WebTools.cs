@@ -941,7 +941,12 @@ public partial class MainWindow
             _settings.OfflineSkinModel = slim ? "slim" : "wide";
             _settings.OfflineSkinPlayer = name;
             _settings.Save();
-            ToolReply(op, ok, ok ? $"皮肤已应用（{name}），下次启动游戏生效" : "已下载到本地，但应用失败：请确认皮肤是 64x64 或 64x32 的 PNG",
+
+            // 服务器皮肤覆盖：登录服的皮肤由服务器下发，本地皮肤服务器管不到，
+            // 装 CustomSkinLoader 强制用本地皮肤（对服务器也生效）
+            var cslMsg = await SetupCustomSkinLoaderAsync(name, path);
+
+            ToolReply(op, ok, ok ? $"皮肤已应用（{name}），下次启动游戏生效{cslMsg}" : "已下载到本地，但应用失败：请确认皮肤是 64x64 或 64x32 的 PNG",
                 new { path });
         }
         catch (Exception ex) { ToolReply(op, false, "应用失败：" + ex.Message); }
@@ -972,9 +977,100 @@ public partial class MainWindow
             _settings.OfflineSkinPath = file;
             _settings.OfflineSkinPlayer = name;
             _settings.Save();
-            ToolReply(op, ok, ok ? "本地皮肤已应用，下次启动游戏生效" : "应用失败：皮肤必须是 64x64 或 64x32 的 PNG", new { path = file });
+            var cslMsg = await SetupCustomSkinLoaderAsync(name, file);
+            ToolReply(op, ok, ok ? $"本地皮肤已应用，下次启动游戏生效{cslMsg}" : "应用失败：皮肤必须是 64x64 或 64x32 的 PNG", new { path = file });
         }
         catch (Exception ex) { ToolReply(op, false, "应用失败：" + ex.Message); }
+    }
+
+    /// <summary>
+    /// 安装/更新 CustomSkinLoader（服务器皮肤覆盖）。
+    /// 登录服务器时你自己的皮肤由服务器下发（PlayerInfo），本地皮肤服务器无法覆盖；
+    /// CSL 会强制按玩家名从本地文件取皮肤，对单人存档和服务器都生效。
+    /// 返回追加到成功提示的一句话；任何失败都静默返回空串，不阻塞皮肤应用。
+    /// </summary>
+    private async Task<string> SetupCustomSkinLoaderAsync(string name, string skinPath)
+    {
+        try
+        {
+            var versionId = CurrentVersionId();
+            if (string.IsNullOrWhiteSpace(versionId)) return "";
+            var verDir = Path.Combine(_gameDirectory, "versions", versionId);
+            var modsDirs = new[] { Path.Combine(verDir, "mods"), Path.Combine(_gameDirectory, "mods") };
+
+            // 1) 取适配当前游戏版本的 CSL 构建（下载一次后复用缓存）
+            var cacheJar = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "NEXLauncher", "tools", "CustomSkinLoader.jar");
+            var mc = McVersionOf(versionId);
+            if (!File.Exists(cacheJar) && !string.IsNullOrWhiteSpace(mc))
+            {
+                foreach (var loader in new[] { "fabric", "neoforge", "forge" })
+                {
+                    var q = "https://api.modrinth.com/v2/project/customskinloader/version" +
+                            $"?game_versions=%5B%22{Uri.EscapeDataString(mc)}%22%5D&loaders=%5B%22{loader}%22%5D";
+                    var json = await _toolHttp.GetStringAsync(q);
+                    using var doc = JsonDocument.Parse(json);
+                    if (doc.RootElement.ValueKind != JsonValueKind.Array || doc.RootElement.GetArrayLength() == 0) continue;
+                    var url = doc.RootElement[0].GetProperty("files")[0].GetProperty("url").GetString();
+                    if (string.IsNullOrWhiteSpace(url)) continue;
+                    var bytes = await _toolHttp.GetByteArrayAsync(url);
+                    if (bytes.Length < 100_000 || bytes[0] != 0x50 || bytes[1] != 0x4B) continue;
+                    Directory.CreateDirectory(Path.GetDirectoryName(cacheJar)!);
+                    await File.WriteAllBytesAsync(cacheJar, bytes);
+                    break;
+                }
+            }
+
+            var cslReady = false;
+            if (File.Exists(cacheJar))
+            {
+                foreach (var dir in modsDirs)
+                {
+                    Directory.CreateDirectory(dir);
+                    File.Copy(cacheJar, Path.Combine(dir, "CustomSkinLoader.jar"), true);
+                    cslReady = true;
+                }
+            }
+            if (!cslReady) return "";
+
+            // 2) 皮肤落到 CSL 的 LocalSkin（按玩家名命名），并清掉 CSL 缓存保证换图立即生效
+            var cslDirs = new[] { Path.Combine(_gameDirectory, "CustomSkinLoader"),
+                                  Path.Combine(verDir, "CustomSkinLoader") };
+            foreach (var cslDir in cslDirs)
+            {
+                var local = Path.Combine(cslDir, "LocalSkin");
+                Directory.CreateDirectory(local);
+                File.Copy(skinPath, Path.Combine(local, $"{name}.png"), true);
+                var cacheDir = Path.Combine(cslDir, "Cache");
+                if (Directory.Exists(cacheDir)) { try { Directory.Delete(cacheDir, true); } catch { } }
+            }
+
+            // 3) 配置：LocalSkin 置顶（用户已有配置则不覆盖）
+            var cfg = new
+            {
+                enable = true,
+                loadlist = new object[]
+                {
+                    new { name = "LocalSkin", type = "Legacy", skin = "LocalSkin", checkPNG = false, model = "auto" },
+                    new { name = "Mojang", type = "MojangAPI" }
+                },
+                enableDynamicSkull = true,
+                enableTransparentSkin = true,
+                forceLoadAllTextures = true,
+                enableCape = false,
+                threadPoolSize = 8,
+                enableLogStdOut = false,
+                cacheExpiry = 1
+            };
+            var cfgJson = JsonSerializer.Serialize(cfg, new JsonSerializerOptions { WriteIndented = true });
+            foreach (var cslDir in cslDirs)
+            {
+                var p = Path.Combine(cslDir, "CustomSkinLoader.json");
+                if (!File.Exists(p)) await File.WriteAllTextAsync(p, cfgJson);
+            }
+            return "；已装 CustomSkinLoader，服务器里的皮肤也会用这套";
+        }
+        catch { return ""; }
     }
 
     // ------------------------------------------------------------------ 统计 / 公告
