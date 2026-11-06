@@ -987,6 +987,7 @@ body.is-mobile .tabbar{display:flex}
             <span class="chip" id="resGo" style="background:var(--accent);color:#fff;border-color:var(--accent);font-weight:700">搜索</span>
           </div>
         </div>
+        <div id="resPicks" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin:0 0 14px"></div>
         <div class="mod-grid" id="resGrid"></div>
         <button class="res-more" id="resMore" style="display:none">加载更多</button>
         <div class="res-modal" id="resModal">
@@ -1662,6 +1663,7 @@ function goto(page){
   document.getElementById("pageSub").textContent = TITLES[page][1];
   if(page!=="home") exitEdit();
   if(page==="versions" && NEX_APP && !NEX_CATALOG) nexPost({cmd:"catalog"});
+  if(page==="res" && typeof loadPicks === "function") loadPicks();
   syncPhone();
 }
 document.querySelectorAll("[data-page]").forEach(el=>el.addEventListener("click",()=>goto(el.dataset.page)));
@@ -1684,6 +1686,12 @@ function fmtN(x){ x = +x||0; return x>=1e6?(x/1e6).toFixed(1)+"M":x>=1e3?(x/1e3)
 /* 国内镜像：图标与文件统一改走 MCIM，官方 CDN 直连基本超时 */
 function mrUrl(u){ u = String(u==null?"":u); return u.replace("https://cdn.modrinth.com","https://mod.mcimirror.top").replace("https://api.modrinth.com","https://mod.mcimirror.top/modrinth"); }
 function hasCJK(t){ return /[\u4e00-\u9fff]/.test(t||""); }
+/* 中文口语词直接映射：机翻会把「矿透」「彗星」译成奇怪的东西，搜出来一片空白 */
+const Q_ALIAS = {
+  "矿透":"xray", "透视":"xray", "x光":"xray", "x光透视":"xray", "矿透材质包":"xray",
+  "彗星":"meteor", "陨石":"meteor", "彗星客户端":"meteor", "meteor客户端":"meteor",
+  "乌斯特":"wurst", "wurst客户端":"wurst", "外挂":"wurst", "作弊客户端":"wurst"
+};
 /* Modrinth 只认英文关键词：中文先翻译（失败用原词） */
 async function translateQ(q){
   try{
@@ -1740,7 +1748,9 @@ async function resSearch(reset){
   if (resState.loader) facets.push([`categories:${resState.loader}`]);
   if (resState.ver)    facets.push([`versions:${resState.ver}`]);
   let qUse = resState.q;
-  if (reset && hasCJK(qUse)) qUse = await translateQ(qUse);
+  const alias = Q_ALIAS[String(qUse||"").trim().toLowerCase()];
+  if (alias) qUse = alias;
+  else if (reset && hasCJK(qUse)) qUse = await translateQ(qUse);
   const qs = "limit=20&index=" + resState.sort +
     "&offset=" + ((resState.page-1)*20) +
     "&query=" + encodeURIComponent(qUse) +
@@ -1854,6 +1864,56 @@ document.getElementById("resGo").onclick = ()=>{
 document.getElementById("resQ").addEventListener("keydown", e=>{ if(e.key==="Enter") document.getElementById("resGo").click(); });
 document.getElementById("resMore").onclick = ()=>{ resState.page++; resSearch(false); };
 resSearch(true);
+
+/* ============ 内置精选：Modrinth 上搜不到的项目（Xray 矿透 / 彗星 / Wurst） ============ */
+let PICKS = null, pickBusy = false;
+function pickCardHTML(p){
+  const badge = p.badge ? `<i style="font-style:normal;font-size:11px;padding:2px 7px;border-radius:6px;background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);font-weight:700">${esc(p.badge)}</i>` : "";
+  const warn = p.fit === false ? `<span style="font-size:11px;color:#d08a20">需 Fabric 版本</span>` : "";
+  return `<div style="display:flex;flex-direction:column;gap:7px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--card)">
+    <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap"><b style="font-size:13px">${esc(p.title)}</b>${badge}</div>
+    <div style="font-size:11.5px;color:var(--muted);line-height:1.55;flex:1">${esc(p.subtitle)}</div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button class="abtn" data-pick="${esc(p.id)}" style="height:28px;padding:0 12px">一键安装</button>${warn}
+    </div>
+  </div>`;
+}
+function paintPicks(){
+  const box = document.getElementById("resPicks"); if(!box) return;
+  if(!PICKS || !PICKS.length){ box.innerHTML = ""; return; }
+  box.innerHTML = `<div style="grid-column:1/-1;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+      <b style="font-size:13px">内置精选</b>
+      <span style="font-size:11.5px;color:var(--muted)">Modrinth 搜不到的项目，直链已配好，点一下直接装进游戏目录</span>
+    </div>` + PICKS.map(pickCardHTML).join("");
+  box.querySelectorAll("[data-pick]").forEach(b=>b.onclick=()=>installPick(b));
+}
+function loadPicks(){
+  const box = document.getElementById("resPicks"); if(!box) return;
+  if(!NEX_APP){ box.innerHTML = ""; return; }
+  if(PICKS){ paintPicks(); return; }
+  box.innerHTML = `<div style="font-size:12px;color:var(--muted);grid-column:1/-1">正在读取内置精选…</div>`;
+  nexTool("curated").then(r=>{ PICKS = (r && r.items) || []; paintPicks(); })
+    .catch(()=>{ box.innerHTML = ""; });
+}
+function installPick(btn){
+  if(pickBusy) return;
+  pickBusy = true;
+  const old = btn.textContent, id = btn.dataset.pick;
+  btn.disabled = true; btn.textContent = "安装中…";
+  toast("正在解析官方直链并下载…");
+  nexTool("curated-install", { id: id }).then(r=>{
+    toast((r && (r._msg || r.msg)) || "完成");
+    clearTimeout(toastTimer); toastTimer = setTimeout(()=>document.getElementById("toast").classList.remove("show"), 8000);
+  }).catch(e=>{
+    toast("安装失败：" + ((e && e.message) || e));
+  }).finally(()=>{ pickBusy = false; btn.disabled = false; btn.textContent = old; });
+}
+/* 工具桥（nexTool）在第 3 段脚本里才挂到 window，这里等它出现再拉列表 */
+(function warmPicks(tries){
+  if (typeof nexTool === "function") { loadPicks(); return; }
+  if ((tries||0) > 40) return;
+  setTimeout(()=>warmPicks((tries||0)+1), 120);
+})(0);
 
 /* ================= 手机版判定 ================= */
 function syncPhone(){

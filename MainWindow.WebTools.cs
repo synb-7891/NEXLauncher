@@ -143,6 +143,8 @@ public partial class MainWindow
             /* ---------------- 资源下载：版本选择 / 前置查询 ---------------- */
             case "res-versions": await ResVersionsAsync(op, Str(a, "id"), Str(a, "type"), Bool(a, "all")); break;
             case "res-deps": await Task.Run(() => ResDepsAsync(op, Str(a, "id"), Str(a, "versionId"))); break;
+            case "curated": CuratedList(op); break;
+            case "curated-install": await CuratedInstallAsync(op, Str(a, "id")); break;
 
             /* ---------------- 皮肤 ---------------- */
             case "skins-page": await SkinsPageAsync(op, Int(a, "page", 1), Str(a, "kind")); break;
@@ -674,6 +676,113 @@ public partial class MainWindow
 
     // ------------------------------------------------------------------ 模组
 
+    // ------------------------------------------------------------ 内置精选（Modrinth 上没有的）
+
+    /// <summary>内置精选列表：Xray 矿透、彗星、Wurst、Fabric API（带当前版本适配标记）。</summary>
+    private void CuratedList(string op)
+    {
+        var mc = McVersionOf(CurrentVersionId());
+        var loader = CurrentLoaderKey();
+        ToolReply(op, true, $"内置精选 {Services.CuratedService.Picks.Count} 项", new
+        {
+            mc,
+            loader,
+            items = Services.CuratedService.Picks.Select(p => new
+            {
+                id = p.Id,
+                title = p.Title,
+                subtitle = p.Subtitle,
+                badge = p.Badge,
+                kind = p.Kind,
+                loader = p.Loader,
+                // 需要 Fabric 的项在没有 Fabric 的版本上标成「需 Fabric」
+                fit = p.Loader.Length == 0 || p.Loader.Equals(loader, StringComparison.OrdinalIgnoreCase)
+            })
+        });
+    }
+
+    /// <summary>一键装内置精选：解析官方直链 → 落到 mods / resourcepacks，客户端类自动补 Fabric API。</summary>
+    private async Task CuratedInstallAsync(string op, string id)
+    {
+        var pick = Services.CuratedService.Find(id);
+        if (pick == null) { ToolReply(op, false, "未知的内置项目：" + id); return; }
+
+        var mc = McVersionOf(CurrentVersionId());
+        var loader = CurrentLoaderKey();
+        if (string.IsNullOrWhiteSpace(mc)) { ToolReply(op, false, "先在左上角选一个游戏版本"); return; }
+        if (pick.Loader == "fabric" && loader != "fabric")
+        {
+            ToolReply(op, false,
+                $"「{pick.Title}」是 Fabric 模组，当前版本（{CurrentVersionId()}）不是 Fabric。" +
+                "先在「下载版本」里装一个 Fabric 版本，或把版本切到 Fabric 再装。");
+            return;
+        }
+
+        try
+        {
+            var files = new List<Services.CuratedFile>();
+            ToolStage(op, "正在解析官方下载地址…");
+            files.AddRange(await Services.CuratedService.ResolveAsync(pick.Id, mc));
+            if (files.Count == 0) { ToolReply(op, false, $"没有找到适配 {mc} 的文件"); return; }
+
+            // 彗星 / Wurst 必须带 Fabric API，否则进游戏直接崩
+            if (pick.Kind == "mod" && pick.Id is "meteor" or "wurst")
+            {
+                var modsDir = Path.Combine(_gameDirectory, "mods");
+                var hasApi = Directory.Exists(modsDir) &&
+                             Directory.GetFiles(modsDir, "*fabric-api*.jar").Length > 0;
+                if (!hasApi) files.AddRange(await Services.CuratedService.ResolveAsync("fabricapi", mc));
+            }
+
+            var saved = new List<string>();
+            foreach (var f in files)
+            {
+                var dir = Path.Combine(_gameDirectory, DlSubDir(pick.Kind));
+                Directory.CreateDirectory(dir);
+                var dest = Path.Combine(dir, f.FileName);
+                if (File.Exists(dest) && new FileInfo(dest).Length > 0)
+                {
+                    saved.Add(Path.GetFileName(dest) + "（已存在）");
+                    continue;
+                }
+                ToolStage(op, $"正在下载 {f.FileName}…");
+                await DownloadQuietAsync(op, f.Url, dest);
+                saved.Add(Path.GetFileName(dest));
+            }
+
+            ToolReply(op, true,
+                $"已装好：{string.Join("、", saved)}。重启游戏生效" +
+                (pick.Kind == "resourcepack" ? "；资源包还要在「选项 → 资源包」里点一下启用。" : "。"),
+                new { files = saved });
+        }
+        catch (Exception ex) { ToolReply(op, false, "安装失败：" + ex.Message); }
+    }
+
+    /// <summary>只推进度、不单独回复的下载（一次操作下载多个文件时用）。</summary>
+    private async Task DownloadQuietAsync(string op, string url, string dest)
+    {
+        var svc = new Services.ModrinthService();
+        var progress = new Progress<(long Received, long Total)>(p =>
+        {
+            if (p.Total > 0)
+            {
+                var pct = (int)(p.Received * 100 / p.Total);
+                if (pct % 10 == 0)
+                    ToolStage(op, $"正在下载 {Path.GetFileName(dest)}… {pct}%（{p.Received / 1048576.0:0.#}/{p.Total / 1048576.0:0.#} MB）");
+            }
+        });
+        try
+        {
+            await svc.DownloadFileAsync(url, dest, progress);
+        }
+        catch (Exception)
+        {
+            // 镜像/代理链路都失败时，绕开系统代理直连原站再试一次
+            try { File.Delete(dest); } catch { }
+            await Services.CuratedService.DownloadDirectAsync(url, dest, progress);
+        }
+    }
+
     /// <summary>
     /// PCL2 式「选择下载版本」：列出项目全部文件版本，并把匹配「当前游戏版本 + 加载器」的排在前面、打上适配标记。
     /// </summary>
@@ -947,12 +1056,19 @@ public partial class MainWindow
             // 装 CustomSkinLoader 强制用本地皮肤（对服务器也生效）
             var cslMsg = await SetupCustomSkinLoaderAsync(name, path);
 
+            var pub = PublicSkinUrlOf(url);
+            // 说清楚「别人能不能看到」：外服以服务器皮肤系统为准，本地只保证自己可见
+            var scope = pub != null
+                ? "，已记录公网贴图地址，别人客户端能直接下载"
+                : LocalSkinServer.Instance.LanReachable
+                    ? "，局域网 / 自己开服里的其他玩家能直接下载"
+                    : "，这张皮肤仅在本机可见（别人的客户端拿不到本地文件）";
+
             ToolReply(op, ok,
                 ok
-                    ? $"皮肤已应用（{name}）" + (PublicSkinUrlOf(url) != null ? "，服务器 / 局域网里别人也能看到" : "") +
-                      "；游戏内立即生效：Esc → 保存并退出 → 再进存档或服务器（不用重启游戏）" + cslMsg
+                    ? $"皮肤已应用（{name}）{scope}；游戏内立即生效：Esc → 保存并退出 → 再进存档或服务器（不用重启游戏）" + cslMsg
                     : "已下载到本地，但应用失败：请确认皮肤是 64x64 或 64x32 的 PNG",
-                new { path, publicUrl = PublicSkinUrlOf(url) });
+                new { path, publicUrl = pub, lan = LocalSkinServer.Instance.LanUrl });
         }
         catch (Exception ex) { ToolReply(op, false, "应用失败：" + ex.Message); }
     }

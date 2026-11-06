@@ -21,6 +21,8 @@ public sealed class LocalSkinServer
 
     private HttpListener? _listener;
     private Thread? _thread;
+    private System.Net.Sockets.TcpListener? _lanListener;
+    private Thread? _lanThread;
     public int Port { get; private set; }
     public string? SkinPath { get; private set; }
     public string Model { get; private set; } = "wide"; // wide / slim
@@ -33,7 +35,23 @@ public sealed class LocalSkinServer
     /// </summary>
     public string? PublicSkinUrl { get; private set; }
 
+    /// <summary>
+    /// 本机局域网地址（如 http://192.168.1.7:28810）。只有当本机皮肤服务器
+    /// 成功监听局域网网卡时才有值——此时局域网 / 自己开服里的其他玩家可以直接
+    /// 从这个地址下载贴图（127.0.0.1 他们访问不到）。
+    /// </summary>
+    public string? LanUrl { get; private set; }
+
+    /// <summary>别人（局域网内）是否真的能取到贴图。</summary>
+    public bool LanReachable => !string.IsNullOrEmpty(LanUrl);
+
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(60) };
+
+    // 局域网转发用的客户端：必须绕过系统代理，否则本机回环请求可能被代理吞掉
+    private static readonly HttpClient LoopHttp = new(new HttpClientHandler { UseProxy = false })
+    {
+        Timeout = TimeSpan.FromSeconds(15)
+    };
 
     // 签名密钥（持久化到 tools/skin_signing.key，PEM 格式）
     private RSA? _rsa;
@@ -146,21 +164,138 @@ public sealed class LocalSkinServer
 
         for (var port = 28810; port < 28840; port++)
         {
+            var listener = new HttpListener();
             try
             {
-                _listener = new HttpListener();
-                _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
-                _listener.Start();
+                listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+                listener.Start();
+                _listener = listener;
                 Port = port;
                 break;
             }
-            catch { _listener = null; }
+            catch { try { listener.Close(); } catch { } }
         }
         if (_listener == null || !_listener.IsListening)
             throw new IOException("无法启动本地皮肤服务器（28810-28839 端口均被占用）");
 
         _thread = new Thread(ListenLoop) { IsBackground = true };
         _thread.Start();
+
+        StartLanRelay(LanIp());
+    }
+
+    /// <summary>
+    /// 局域网转发口：http.sys 的局域网前缀需要管理员保留，普通权限绑不上，
+    /// 所以另开一个裸 TcpListener（不需要 URL 保留）做一层转发，
+    /// 局域网 / 自己开服里的其他玩家就能从这个地址取到贴图。
+    /// </summary>
+    private void StartLanRelay(string? lanIp)
+    {
+        LanUrl = null;
+        if (lanIp == null) return;
+        for (var p = Port + 1; p < Port + 40; p++)
+        {
+            try
+            {
+                var l = new System.Net.Sockets.TcpListener(IPAddress.Any, p);
+                l.Start();
+                _lanListener = l;
+                _lanThread = new Thread(() => LanLoop(l)) { IsBackground = true };
+                _lanThread.Start();
+                LanUrl = $"http://{lanIp}:{p}";
+                return;
+            }
+            catch { }
+        }
+    }
+
+    private void LanLoop(System.Net.Sockets.TcpListener l)
+    {
+        while (true)
+        {
+            System.Net.Sockets.TcpClient c;
+            try { c = l.AcceptTcpClient(); }
+            catch { break; }
+            _ = Task.Run(() =>
+            {
+                try { HandleLan(c); } catch { }
+                finally { try { c.Close(); } catch { } }
+            });
+        }
+    }
+
+    /// <summary>把局域网请求原样转给本机回环端口，返回同样内容。</summary>
+    private void HandleLan(System.Net.Sockets.TcpClient c)
+    {
+        c.ReceiveTimeout = 5000;
+        var ns = c.GetStream();
+        var reader = new StreamReader(ns, Encoding.ASCII, false, 1024, true);
+        var line = reader.ReadLine();
+        if (string.IsNullOrEmpty(line)) return;
+        while (!string.IsNullOrEmpty(reader.ReadLine())) { } // 丢弃请求头
+
+        var parts = line.Split(' ');
+        if (parts.Length < 2 || !parts[1].StartsWith('/')) return;
+
+        byte[] body;
+        string ctype;
+        var status = 200;
+        try
+        {
+            using var resp = LoopHttp.GetAsync($"http://127.0.0.1:{Port}{parts[1]}").GetAwaiter().GetResult();
+            status = (int)resp.StatusCode;
+            ctype = resp.Content.Headers.ContentType?.ToString() ?? "application/octet-stream";
+            body = resp.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+        }
+        catch
+        {
+            status = 502;
+            ctype = "text/plain";
+            body = Array.Empty<byte>();
+        }
+
+        var head = "HTTP/1.1 " + status + (status == 200 ? " OK" : " ERR") + "\r\n" +
+                   "Content-Type: " + ctype + "\r\n" +
+                   "Content-Length: " + body.Length + "\r\n" +
+                   "Cache-Control: no-store, no-cache, must-revalidate\r\n" +
+                   "Connection: close\r\n\r\n";
+        var hb = Encoding.ASCII.GetBytes(head);
+        ns.Write(hb, 0, hb.Length);
+        if (body.Length > 0) ns.Write(body, 0, body.Length);
+        ns.Flush();
+    }
+
+    /// <summary>本机局域网 IPv4（取不到返回 null）。</summary>
+    private static string? LanIp()
+    {
+        try
+        {
+            // 不会真的发包：只为让系统选一条默认出口路由，从而拿到本机内网地址
+            using var s = new System.Net.Sockets.Socket(
+                System.Net.Sockets.AddressFamily.InterNetwork,
+                System.Net.Sockets.SocketType.Dgram,
+                System.Net.Sockets.ProtocolType.Udp);
+            s.Connect("223.5.5.5", 53);
+            if (s.LocalEndPoint is IPEndPoint ep && !IPAddress.IsLoopback(ep.Address))
+                return ep.Address.ToString();
+        }
+        catch { }
+        try
+        {
+            foreach (var ni in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (ni.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up) continue;
+                var t = ni.NetworkInterfaceType;
+                if (t == System.Net.NetworkInformation.NetworkInterfaceType.Loopback ||
+                    t == System.Net.NetworkInformation.NetworkInterfaceType.Tunnel) continue;
+                foreach (var ua in ni.GetIPProperties().UnicastAddresses)
+                    if (ua.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork &&
+                        !IPAddress.IsLoopback(ua.Address))
+                        return ua.Address.ToString();
+            }
+        }
+        catch { }
+        return null;
     }
 
     /// <summary>记录一次请求，便于确认游戏是否真的来取皮肤（诊断「应用了但没变化」）。</summary>
@@ -207,6 +342,11 @@ public sealed class LocalSkinServer
             var pub = (_publicKeyPem ?? "").Replace("\r\n", "\\n").Replace("\n", "\\n");
             // skinDomains 必须包含纹理所在域名，否则客户端会拒收这张贴图
             var domains = new List<string> { "127.0.0.1", "localhost" };
+            if (!string.IsNullOrEmpty(LanUrl) && Uri.TryCreate(LanUrl, UriKind.Absolute, out var lu))
+            {
+                var lh = lu.Host.ToLowerInvariant();
+                if (!domains.Contains(lh)) domains.Add(lh);
+            }
             if (!string.IsNullOrEmpty(PublicSkinUrl) && Uri.TryCreate(PublicSkinUrl, UriKind.Absolute, out var pu))
             {
                 var h = pu.Host.ToLowerInvariant();
@@ -237,7 +377,7 @@ public sealed class LocalSkinServer
         if (path.StartsWith(namePrefix) && path.Length > namePrefix.Length)
         {
             var name = Uri.UnescapeDataString(path[namePrefix.Length..].TrimEnd('/'));
-            WriteJson(ctx, BuildProfileJson(OfflineUuid(name), name));
+            WriteJson(ctx, BuildProfileJson(OfflineUuid(name), name, IsMe(name)));
             return;
         }
 
@@ -245,7 +385,7 @@ public sealed class LocalSkinServer
         if (path == "/sessionserver/session/minecraft/hasJoined")
         {
             var name = ctx.Request.QueryString["username"] ?? PlayerName;
-            WriteJson(ctx, BuildProfileJson(OfflineUuid(name), name));
+            WriteJson(ctx, BuildProfileJson(OfflineUuid(name), name, IsMe(name)));
             return;
         }
 
@@ -283,20 +423,27 @@ public sealed class LocalSkinServer
         return new Guid(hash).ToString("N");
     }
 
+    /// <summary>只有查询「自己」这个名字时才挂皮肤，否则同一台服里所有没皮肤的玩家都会穿上你的皮肤。</summary>
+    private bool IsMe(string name) =>
+        string.Equals(name, PlayerName, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>构造游戏可识别的玩家档案 JSON（含 base64 且已签名的 textures 属性）。</summary>
-    private string BuildProfileJson(string uuid, string? name = null)
+    private string BuildProfileJson(string uuid, string? name = null, bool attachSkin = true)
     {
         var playerName = name ?? PlayerName;
-        if (string.IsNullOrEmpty(uuid) || SkinPath == null || !File.Exists(SkinPath) || _rsa == null)
+        if (!attachSkin || string.IsNullOrEmpty(uuid) || SkinPath == null || !File.Exists(SkinPath) || _rsa == null)
         {
             // 未设置皮肤：返回无纹理档案
             return "{\"id\":\"" + uuid + "\",\"name\":\"" + playerName + "\",\"properties\":[]}";
         }
 
-        // 有公网地址就用公网地址：别的玩家客户端也能下载到（回环地址他们访问不到）
+        // 优先公网地址（外服 / 跨网络也能取）；没有公网地址时用局域网地址，
+        // 局域网 / 自己开服里的其他玩家能直接下载；最后才退回回环（只有自己看得到）。
         var skinUrl = !string.IsNullOrEmpty(PublicSkinUrl)
             ? PublicSkinUrl!
-            : $"http://127.0.0.1:{Port}/skins/skin.png?v={_skinStamp}";
+            : !string.IsNullOrEmpty(LanUrl)
+                ? $"{LanUrl}/skins/skin.png?v={_skinStamp}"
+                : $"http://127.0.0.1:{Port}/skins/skin.png?v={_skinStamp}";
         var textures = Model == "slim"
             ? "{\"SKIN\":{\"url\":\"" + skinUrl + "\",\"metadata\":{\"model\":\"slim\"}}}"
             : "{\"SKIN\":{\"url\":\"" + skinUrl + "\"}}";

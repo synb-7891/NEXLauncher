@@ -6,6 +6,7 @@ release/
 probe/
 .ui-backup-*/
 publish/
+publish_*/
 
 # ---- IDE / 工具 ----
 .vs/
