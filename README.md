@@ -2,13 +2,13 @@
 
 NEX Launcher 是一款第三方 Minecraft 启动器（Windows 10/11，.NET 8 + WPF + WebView2），界面为自研的 Verse 风格自由布局：开始页面所有卡片可拖拽、可自定义背景，经典界面与新版界面共用同一套账号、版本与设置。
 
-当前版本：**v4.0.6**
+当前版本：**v4.0.7**
 
 ## 下载
 
 | 版本 | 说明 |
 |---|---|
-| **完整版**（`NEXLauncher-4.0.6.zip`） | 自包含 .NET 运行时，解压双击 `NEXLauncher.exe` 即可运行 |
+| **完整版**（`NEXLauncher-4.0.7.zip`） | 自包含 .NET 运行时，解压双击 `NEXLauncher.exe` 即可运行 |
 | **公共版**（`NEXLauncher-3.9.8-public.zip`） | 上一版本，面向公共分发（不含使用说明文件） |
 
 下载后解压到任意目录运行，**无需另装 .NET**。系统需具备 WebView2 运行时（Windows 10/11 一般自带；缺失时会自动回退经典界面）。
@@ -17,7 +17,7 @@ NEX Launcher 是一款第三方 Minecraft 启动器（Windows 10/11，.NET 8 + W
 
 - **开始页面**：头像 / 启动游戏 / 公告 / 本周数据 / 快捷功能 / 我的资源 / 防护状态七张卡片，任意拖拽、居中吸附、位置自动保存；点头像直达账号页
 - **游戏版本**：扫描本机版本，支持 Fabric / Forge / Quilt 加载器，整合包导入与安装向导
-- **资源下载**：Modrinth 实时搜索（模组 / 整合包 / 资源包 / 光影包 / 数据包），加载器与游戏版本筛选、镜像加速、详情弹窗；顶部「内置精选」四张卡（Xray 矿透资源包、Meteor Client · 彗星、Wurst Client、Fabric API 前置），直链后台按当前游戏版本实时解析，一键装到 `mods` / `resourcepacks`
+- **资源下载**：Modrinth 实时搜索（模组 / 整合包 / 资源包 / 光影包 / 数据包），加载器与游戏版本筛选、镜像加速、详情弹窗；Xray 矿透资源包、Meteor Client · 彗星、Wurst Client、Fabric API 直接收进模组和资源包列表（这几样不在 Modrinth 发行，普通搜索搜不到），直链按当前游戏版本实时解析，一键装到 `mods` / `resourcepacks`
 - **账号**：微软正版登录、离线账号、外置登录（authlib），多账号切换
 - **皮肤站**：Ely.by 皮肤库 1000 页（10000 个真实皮肤，点页数弹出 1~1000 页码面板，点哪跳哪、输入页码直达，一键应用）、本地皮肤上传、LittleSkin / NameMC 入口
 - **皮肤真实生效**：应用后自动注入 authlib-injector 并安装配置 CustomSkinLoader，单机与登录服（服务器下发皮肤）里都显示你的皮肤
@@ -25,19 +25,20 @@ NEX Launcher 是一款第三方 Minecraft 启动器（Windows 10/11，.NET 8 + W
 - **安全防护**：五道防线（下载防护 / 勒索蜜罐 / 行为监控 / 系统守护 / 游戏防护）、诱饵文件监控、威胁隔离区、事件日志
 - **个性化**：浅色「云白」默认主题 + 6 套深色主题任意切换、自定义背景图、遮罩浓度与模糊、窗口圆角
 
-## 本版更新（4.0.6）
+## 本版更新（4.0.7）
 
-- **资源下载「内置精选」**：Xray 矿透资源包、Meteor Client（彗星）、Wurst Client、Fabric API 四张卡片置顶，不经过 Modrinth 搜索
-  - 原因：Wurst 与 Meteor 从不在 Modrinth 发行（只有官网 + GitHub），在资源页搜名字必然 0 条；Xray 在 Modrinth 有（Spectator Xray，146 万下载）但中文「矿透」经翻译后搜不到
-  - 直链实时解析：Xray → Modrinth `x-ray`；彗星 → `meteorclient.com/api/download?version=`；Wurst → GitHub `Wurst-MCX2` release 资产（API 不可达时用已人工验证的版本兜底）；全部按当前游戏版本取对应文件
-  - 搜索框加中文别名：`矿透 / X光 / 透视 → xray`、`彗星 → meteor`、`乌斯特 → wurst`
+- **Xray 矿透 / 彗星 / Wurst / Fabric API 直接收进模组和资源包列表**：不再单独展示卡片，和其他搜索结果一起正常显示
+  - 切到「模组」标签能看到彗星 / Wurst / Fabric API，切到「资源包」标签能看到 Xray 矿透，点开详情一键安装
+  - 搜索「矿透 / 透视 / X光」「彗星」「乌斯特」等中文词也会带出对应条目
+  - 直链实时解析：Xray → Modrinth `x-ray`；彗星 → `meteorclient.com/api/download?version=`；Wurst → GitHub `Wurst-MCX2` release 资产（API 不可达时用已人工验证的版本兜底）；全部按当前游戏版本取文件
   - 一键安装：客户端类进 `mods` 并自动补 Fabric API（已存在则跳过），资源包进 `resourcepacks`
 - **局域网皮肤转发**：本地皮肤服务新增局域网监听口，自己开服 / 局域网联机时其他玩家能直接从主机取到贴图；贴图地址优先级 公网 > 局域网 > 回环
 - **修正**：`/api/profiles/minecraft/<name>` 与 `hasJoined` 以前对任何玩家名都挂上本机皮肤（服里别人会「顶着你的脸」），现在仅本人名字生效
 - **应用皮肤提示**：明确告知这张皮肤「谁能看到」——公网 / 局域网 / 仅本机
 
-## 历史更新（4.0.5）
+## 历史更新（4.0.6 / 4.0.5）
 
+- **Xray 矿透 / 彗星 / Wurst / Fabric API 曾以「内置精选」卡片置顶展示，4.0.7 起直接混进模组 / 资源包列表**
 - **PCL2 式资源下载**：下载模组 / 资源包 / 光影前先弹出全部文件版本，默认只列适配当前游戏版本与加载器的条目（绿色「适配当前」徽标），关掉开关可看全部
 - **前置依赖精确匹配**：选中版本后按同一游戏版本 + 加载器挑前置，给 1.21.11 的 Iris 只会配 1.21.11 的 Sodium
 - **右下角悬浮控制**：游戏运行中显示红色「强制结束」（两步确认），下载进度圆环 + 进行中任务徽标

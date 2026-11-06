@@ -987,7 +987,6 @@ body.is-mobile .tabbar{display:flex}
             <span class="chip" id="resGo" style="background:var(--accent);color:#fff;border-color:var(--accent);font-weight:700">搜索</span>
           </div>
         </div>
-        <div id="resPicks" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin:0 0 14px"></div>
         <div class="mod-grid" id="resGrid"></div>
         <button class="res-more" id="resMore" style="display:none">加载更多</button>
         <div class="res-modal" id="resModal">
@@ -1663,7 +1662,7 @@ function goto(page){
   document.getElementById("pageSub").textContent = TITLES[page][1];
   if(page!=="home") exitEdit();
   if(page==="versions" && NEX_APP && !NEX_CATALOG) nexPost({cmd:"catalog"});
-  if(page==="res" && typeof loadPicks === "function") loadPicks();
+  if(page==="res") loadPicks(true);
   syncPhone();
 }
 document.querySelectorAll("[data-page]").forEach(el=>el.addEventListener("click",()=>goto(el.dataset.page)));
@@ -1708,6 +1707,23 @@ function phIco(title, i){
   return `<div class="mod-ico-ph" style="background:linear-gradient(135deg,${a},${b})">${ch}</div>`;
 }
 function cardHTML(h, i){
+  /* 内置直链条目（Modrinth 上搜不到的那几个）长成普通结果卡，点开详情一键装 */
+  if (h && h.__curated){
+    const warn = h.__fit === false ? `<span style="font-size:11px;color:#d08a20">需 Fabric 版本</span>` : "";
+    return `<div class="mod-card" data-i="${i}">
+      <div class="mod-head">
+        ${phIco(h.title, i)}
+        <div style="min-width:0">
+          <div class="mod-name">${esc(h.title)}</div>
+          <div class="mod-author">${esc(h.author || "内置直链")}</div>
+        </div>
+      </div>
+      <div class="mod-intro">${esc(h.description)}</div>
+      <div class="mod-foot">
+        <span class="mod-tags"><i>直链安装</i></span>${warn}
+      </div>
+    </div>`;
+  }
   const tags = (h.categories||[]).filter(c=>["fabric","forge","neoforge","quilt"].includes(c)).slice(0,2)
     .map(c=>`<i>${esc(c)}</i>`).join("");
   return `<div class="mod-card" data-i="${i}">
@@ -1786,6 +1802,9 @@ async function resSearch(reset){
       document.getElementById("resGrid").appendChild(tip);
     }
   }
+  /* 内置直链项按类型混进「模组」「资源包」列表：只在第一页加，不影响翻页 */
+  let rawLen = hits ? hits.length : 0;
+  if (reset && PICKS && PICKS.length) hits = curatedHits(resState.type).concat(hits || []);
   resState.hits = reset ? hits : (resState.hits||[]).concat(hits||[]);
   const g = document.getElementById("resGrid");
   /* 关键修复：渲染结果前必须清掉骨架屏。
@@ -1801,13 +1820,34 @@ async function resSearch(reset){
     }catch(e){ /* 单卡片异常不拖垮整页 */ }
   });
   g.querySelectorAll(".mod-card").forEach(c=>c.onclick = ()=>resDetail(+c.dataset.i));
-  document.getElementById("resMore").style.display = (!resState.offline && hits && hits.length===20) ? "block" : "none";
+  document.getElementById("resMore").style.display = (!resState.offline && rawLen===20) ? "block" : "none";
   } finally {
     resState.busy = false;   /* 任何异常都保证骨架屏能被下一次请求替换 */
   }
 }
 function resDetail(i){
   const h = resState.hits[i]; if(!h) return;
+  /* 内置直链条目的详情：不查版本列表，直接解析官方直链安装 */
+  if (h.__curated){
+    const noFit = h.__fit === false;
+    document.getElementById("resBox").innerHTML = `
+      <div class="banner" style="background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 40%,#000))"></div>
+      <h3>${esc(h.title)}</h3>
+      <div class="meta-row"><span>${esc(h.author || "内置直链")}</span><span>下载地址由官方渠道实时解析，永远拿当前游戏版本的最新构建</span></div>
+      <div class="desc">${esc(h.description)}</div>
+      ${noFit ? `<div style="font-size:12px;color:#d08a20;margin-top:8px">当前选中的版本不是 Fabric，请先切换到 Fabric 版本再安装。</div>` : ``}
+      <div class="actions">
+        <button class="dl" id="curInst">${noFit ? "当前版本不可用" : "一键安装"}</button>
+        <button class="gh" id="resX">关闭</button>
+      </div>`;
+    document.getElementById("resModal").classList.add("show");
+    document.getElementById("resX").onclick = closeResModal;
+    document.getElementById("curInst").onclick = (e)=>{
+      if (noFit) { toast("先在「下载版本」里装一个 Fabric 版本，或把版本切到 Fabric"); return; }
+      installPick(h.__curated, e.target);
+    };
+    return;
+  }
   const slug = h.slug || h.project_id || "";
   const page = "https://modrinth.com/" + (h.project_type||"mod") + "/" + slug;
   const tags = (h.categories||[]).slice(0,6).map(c=>`<i style="font-style:normal;font-size:11px;padding:3px 9px;border-radius:7px;background:color-mix(in srgb,var(--accent) 13%,transparent);color:var(--accent);font-weight:600">${esc(c)}</i>`).join(" ");
@@ -1865,52 +1905,61 @@ document.getElementById("resQ").addEventListener("keydown", e=>{ if(e.key==="Ent
 document.getElementById("resMore").onclick = ()=>{ resState.page++; resSearch(false); };
 resSearch(true);
 
-/* ============ 内置精选：Modrinth 上搜不到的项目（Xray 矿透 / 彗星 / Wurst） ============ */
+/* ===== 内置直链项：Modrinth 上搜不到（Meteor / Wurst）或中文搜不到（Xray 矿透）的项目，
+   不单独开卡片，按类型直接混进「模组」「资源包」搜索结果里，点开详情一键安装 ===== */
 let PICKS = null, pickBusy = false;
-function pickCardHTML(p){
-  const badge = p.badge ? `<i style="font-style:normal;font-size:11px;padding:2px 7px;border-radius:6px;background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);font-weight:700">${esc(p.badge)}</i>` : "";
-  const warn = p.fit === false ? `<span style="font-size:11px;color:#d08a20">需 Fabric 版本</span>` : "";
-  return `<div style="display:flex;flex-direction:column;gap:7px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--card)">
-    <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap"><b style="font-size:13px">${esc(p.title)}</b>${badge}</div>
-    <div style="font-size:11.5px;color:var(--muted);line-height:1.55;flex:1">${esc(p.subtitle)}</div>
-    <div style="display:flex;align-items:center;gap:8px">
-      <button class="abtn" data-pick="${esc(p.id)}" style="height:28px;padding:0 12px">一键安装</button>${warn}
-    </div>
-  </div>`;
+/* 哪些搜索词该带出哪个内置项 */
+const CURATED_Q = {
+  xray:      ["矿透", "透视", "x光", "x光透视", "xray", "矿石", "挖矿"],
+  meteor:    ["彗星", "meteor", "陨石"],
+  wurst:     ["wurst", "乌斯特", "外挂", "作弊"],
+  fabricapi: ["fabric", "api", "前置", "fabricapi"]
+};
+function curatedHits(type){
+  const q = String(resState.q || "").trim().toLowerCase();
+  return (PICKS || []).filter(p=>{
+    if (p.kind !== type) return false;
+    if (resState.loader && p.loader && p.loader !== resState.loader) return false;
+    if (!q) return true;
+    const words = CURATED_Q[p.id] || [];
+    return words.some(w => q.includes(w) || w.includes(q)) ||
+           p.title.toLowerCase().includes(q) ||
+           String(p.subtitle || "").toLowerCase().includes(q);
+  }).map(p=>({
+    __curated: p.id, __fit: p.fit,
+    title: p.title, author: p.badge || "内置直链",
+    description: p.subtitle, downloads: 0, follows: 0,
+    categories: p.loader ? [p.loader] : [], icon_url: ""
+  }));
 }
-function paintPicks(){
-  const box = document.getElementById("resPicks"); if(!box) return;
-  if(!PICKS || !PICKS.length){ box.innerHTML = ""; return; }
-  box.innerHTML = `<div style="grid-column:1/-1;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
-      <b style="font-size:13px">内置精选</b>
-      <span style="font-size:11.5px;color:var(--muted)">Modrinth 搜不到的项目，直链已配好，点一下直接装进游戏目录</span>
-    </div>` + PICKS.map(pickCardHTML).join("");
-  box.querySelectorAll("[data-pick]").forEach(b=>b.onclick=()=>installPick(b));
+function resRefreshIfVisible(){
+  const pg = document.getElementById("page-res");
+  if (pg && pg.classList.contains("on") && resState.page === 1 && !resState.busy) resSearch(true);
 }
-function loadPicks(){
-  const box = document.getElementById("resPicks"); if(!box) return;
-  if(!NEX_APP){ box.innerHTML = ""; return; }
-  if(PICKS){ paintPicks(); return; }
-  box.innerHTML = `<div style="font-size:12px;color:var(--muted);grid-column:1/-1">正在读取内置精选…</div>`;
-  nexTool("curated").then(r=>{ PICKS = (r && r.items) || []; paintPicks(); })
-    .catch(()=>{ box.innerHTML = ""; });
+function loadPicks(rerender){
+  if (!NEX_APP) return;
+  if (PICKS){ if (rerender) resRefreshIfVisible(); return; }
+  nexTool("curated").then(r=>{
+    PICKS = (r && r.items) || [];
+    resRefreshIfVisible();
+  }).catch(()=>{});
 }
-function installPick(btn){
+function installPick(id, btn){
   if(pickBusy) return;
   pickBusy = true;
-  const old = btn.textContent, id = btn.dataset.pick;
-  btn.disabled = true; btn.textContent = "安装中…";
+  const old = btn ? btn.textContent : "";
+  if (btn){ btn.disabled = true; btn.textContent = "安装中…"; }
   toast("正在解析官方直链并下载…");
   nexTool("curated-install", { id: id }).then(r=>{
     toast((r && (r._msg || r.msg)) || "完成");
     clearTimeout(toastTimer); toastTimer = setTimeout(()=>document.getElementById("toast").classList.remove("show"), 8000);
   }).catch(e=>{
     toast("安装失败：" + ((e && e.message) || e));
-  }).finally(()=>{ pickBusy = false; btn.disabled = false; btn.textContent = old; });
+  }).finally(()=>{ pickBusy = false; if (btn){ btn.disabled = false; btn.textContent = old; } });
 }
 /* 工具桥（nexTool）在第 3 段脚本里才挂到 window，这里等它出现再拉列表 */
 (function warmPicks(tries){
-  if (typeof nexTool === "function") { loadPicks(); return; }
+  if (typeof nexTool === "function") { loadPicks(false); return; }
   if ((tries||0) > 40) return;
   setTimeout(()=>warmPicks((tries||0)+1), 120);
 })(0);
