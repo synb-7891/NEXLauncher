@@ -1313,7 +1313,7 @@ public partial class MainWindow
                           && DateTimeOffset.TryParse(ps, out var dt) ? dt.ToLocalTime().ToString("MM-dd") : "";
                 var name = r.TryGetProperty("name", out var n) ? (n.GetString() ?? "") : "";
                 var note = r.TryGetProperty("body", out var b) ? (b.GetString() ?? "") : "";
-                var line = note.Split('\n').Select(x => x.Trim().TrimStart('-', '*', ' '))
+                var line = note.Split('\n').Select(x => x.Trim().TrimStart('-', '*', '#', ' '))
                     .FirstOrDefault(x => x.Length > 3) ?? "";
                 if (line.Length > 80) line = line[..80] + "…";
                 list.Add(new { tag, date = pub, name, note = line });

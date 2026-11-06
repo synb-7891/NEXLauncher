@@ -430,12 +430,12 @@ public partial class MainWindow
             core.SetVirtualHostNameToFolderMapping(
                 "nex.local", WebShellDir, CoreWebView2HostResourceAccessKind.Allow);
 
-            // 侧栏版本号以程序集版本为准：页面里写死的只是兜底，每次导航都用脚本纠正，
-            // 以后升版本只改 csproj，界面不再出现「v4.0.5」这种过时标注
+            // 版本号以程序集版本为准：侧栏与公告卡标题每次导航都用脚本纠正，
+            // 以后升版本只改 csproj，界面不会再出现「v4.0.5」这种过时标注
             core.AddScriptToExecuteOnDocumentCreatedAsync(
                 "document.addEventListener('DOMContentLoaded',function(){" +
-                "var el=document.getElementById('app-ver');" +
-                "if(el)el.textContent='v" + AppInfo.Version + " · 完整版';});");
+                "var el=document.getElementById('app-ver');if(el)el.textContent='v" + AppInfo.Version + " · 完整版';" +
+                "var an=document.getElementById('announce-title');if(an)an.textContent='公告 · NEX " + AppInfo.Version + "';});");
 
             // WebView2 底色已强制云白（XAML + 代码双保险），首帧前是云白而不是黑，
             // 无需折叠控件 —— 折叠会让 Chromium 降频，反而拖慢首帧。

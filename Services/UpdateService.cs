@@ -7,10 +7,23 @@ using System.Windows;
 
 namespace NEXLauncher.Services;
 
-/// <summary>启动器当前版本号。发布新版本时同步修改这里。</summary>
+/// <summary>启动器当前版本号：自动取自程序集版本（csproj 的 &lt;Version&gt;），
+/// 升版本只改 csproj 一处，这里和界面侧栏都会跟着变。</summary>
 public static class AppInfo
 {
-    public const string Version = "0.4.0";
+    public static readonly string Version = ReadVersion();
+
+    private static string ReadVersion()
+    {
+        try
+        {
+            var v = typeof(AppInfo).Assembly.GetName().Version;
+            if (v != null && (v.Major > 0 || v.Minor > 0 || v.Build > 0))
+                return $"{v.Major}.{v.Minor}.{v.Build}";
+        }
+        catch { }
+        return "4.0.10";   // 程序集版本缺失时的兜底
+    }
 }
 
 public sealed record UpdateInfo(string Version, string Url, string Notes, string PublishedAt)
