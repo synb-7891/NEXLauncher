@@ -430,6 +430,13 @@ public partial class MainWindow
             core.SetVirtualHostNameToFolderMapping(
                 "nex.local", WebShellDir, CoreWebView2HostResourceAccessKind.Allow);
 
+            // 侧栏版本号以程序集版本为准：页面里写死的只是兜底，每次导航都用脚本纠正，
+            // 以后升版本只改 csproj，界面不再出现「v4.0.5」这种过时标注
+            core.AddScriptToExecuteOnDocumentCreatedAsync(
+                "document.addEventListener('DOMContentLoaded',function(){" +
+                "var el=document.getElementById('app-ver');" +
+                "if(el)el.textContent='v" + AppInfo.Version + " · 完整版';});");
+
             // WebView2 底色已强制云白（XAML + 代码双保险），首帧前是云白而不是黑，
             // 无需折叠控件 —— 折叠会让 Chromium 降频，反而拖慢首帧。
             // ?v= 用 index.html 的最后写入时间做版本号：页面文件更新后强制绕过 WebView2 HTTP 缓存
