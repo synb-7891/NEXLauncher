@@ -349,6 +349,95 @@ public sealed class ModpackService
         catch { return false; }
     }
 
+    /// <summary>
+    /// 把旧式安装（文件散在游戏根目录）的整合包迁移成一个独立版本：
+    /// 新建 versions/&lt;名字&gt;/，把记录里的文件从根目录搬进去，根目录恢复干净。
+    /// 不重新下载任何东西，也不动别的版本。
+    /// </summary>
+    public static async Task<ModpackRecord> MigrateLegacyAsync(string gameDir, ModpackRecord legacy,
+        string? versionName = null, CancellationToken ct = default)
+    {
+        if (!string.IsNullOrEmpty(legacy.VersionId)) return legacy;
+
+        var root = Path.GetFullPath(gameDir);
+        var versionsDir = Path.Combine(root, "versions");
+        Directory.CreateDirectory(versionsDir);
+
+        var baseId = PickBaseFor(root, legacy);
+        if (string.IsNullOrWhiteSpace(baseId))
+            throw new InvalidOperationException("本机找不到可用的基底版本，先在「游戏版本」页装一个再迁移。");
+
+        var wanted = string.IsNullOrWhiteSpace(versionName) ? $"{legacy.Name} {legacy.Version}" : versionName.Trim();
+        var versionId = UniqueVersionId(versionsDir, Slug(wanted));
+        var versionDir = Path.Combine(versionsDir, versionId);
+        Directory.CreateDirectory(versionDir);
+
+        WriteVersionJson(versionDir, versionId, baseId);
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(versionDir, MarkerFileName),
+                $"name={legacy.Name}\nversion={legacy.Version}\nbase={baseId}\nmigrated={DateTime.Now:yyyy-MM-dd HH:mm:ss}\n", ct);
+        }
+        catch { }
+
+        // 搬家：记录里的相对路径 → 版本目录（同结构）；源文件不存在的跳过
+        foreach (var rel in legacy.Files)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var src = Path.GetFullPath(Path.Combine(root, rel));
+                if (!src.StartsWith(root, StringComparison.OrdinalIgnoreCase) || !File.Exists(src)) continue;
+                var dst = Path.GetFullPath(Path.Combine(versionDir, rel));
+                if (!dst.StartsWith(versionDir, StringComparison.OrdinalIgnoreCase)) continue;
+                Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
+                if (File.Exists(dst)) continue;
+                File.Move(src, dst);
+            }
+            catch { /* 单个文件被占用就跳过，别中断整体迁移 */ }
+        }
+
+        var record = new ModpackRecord(Slug(versionId), legacy.Name, legacy.Version, legacy.McVersion,
+            legacy.LoaderId, legacy.LoaderVersion, legacy.Format, legacy.Files, null,
+            DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), versionId, true);
+
+        var oldDir = Path.Combine(InstancesRoot(root), legacy.Id);
+        var newDir = Path.Combine(InstancesRoot(root), record.Id);
+        Directory.CreateDirectory(newDir);
+        await File.WriteAllTextAsync(Path.Combine(newDir, "pack.json"),
+            JsonSerializer.Serialize(record, new JsonSerializerOptions { WriteIndented = true }), ct);
+        if (!string.Equals(oldDir, newDir, StringComparison.OrdinalIgnoreCase))
+        {
+            try { if (Directory.Exists(oldDir)) Directory.Delete(oldDir, true); } catch { }
+        }
+        return record;
+    }
+
+    /// <summary>给旧记录挑一个基底版本：优先「同加载器 + 同 MC 版本」，其次同 MC 版本。</summary>
+    private static string? PickBaseFor(string root, ModpackRecord legacy)
+    {
+        var dir = Path.Combine(root, "versions");
+        if (!Directory.Exists(dir)) return null;
+        var names = Directory.GetDirectories(dir)
+            .Select(Path.GetFileName)
+            .Where(n => !string.IsNullOrEmpty(n) && File.Exists(Path.Combine(dir, n!, n + ".json")))
+            .Select(n => n!)
+            .ToList();
+        if (!string.IsNullOrEmpty(legacy.LoaderId) && !string.IsNullOrEmpty(legacy.McVersion))
+        {
+            var best = names.FirstOrDefault(n => n.Contains(legacy.LoaderId, StringComparison.OrdinalIgnoreCase)
+                                                 && n.Contains(legacy.McVersion, StringComparison.OrdinalIgnoreCase));
+            if (best != null) return best;
+        }
+        if (!string.IsNullOrEmpty(legacy.McVersion))
+        {
+            var best = names.FirstOrDefault(n => n.Equals(legacy.McVersion, StringComparison.OrdinalIgnoreCase))
+                       ?? names.FirstOrDefault(n => n.Contains(legacy.McVersion, StringComparison.OrdinalIgnoreCase));
+            if (best != null) return best;
+        }
+        return names.FirstOrDefault();
+    }
+
     /// <summary>列出已安装的整合包。</summary>
     public static List<ModpackRecord> ListInstalled(string gameDir)
     {

@@ -318,6 +318,25 @@ public sealed class ModpackManagerWindow : Window
         uninstallBtn.Click += (_, _) => Uninstall(rec);
         btnCol.Children.Add(uninstallBtn);
 
+        // 旧式安装（文件散在根目录）：给一个不重新下载就能改造成独立版本的入口
+        if (string.IsNullOrEmpty(rec.VersionId))
+        {
+            var migrateBtn = new Button
+            {
+                Content = "迁移为独立版本",
+                Padding = new Thickness(14, 6, 14, 6),
+                Margin = new Thickness(0, 6, 0, 0),
+                Background = B(UiPalette.Accent),
+                Foreground = B(UiPalette.Bg),
+                BorderThickness = new Thickness(0),
+                FontWeight = FontWeights.SemiBold,
+                Cursor = System.Windows.Input.Cursors.Hand,
+                FontSize = 12
+            };
+            migrateBtn.Click += async (_, _) => await MigrateLegacy(rec, migrateBtn);
+            btnCol.Children.Add(migrateBtn);
+        }
+
         if (!string.IsNullOrEmpty(rec.VersionId))
         {
             var openBtn = new Button
@@ -349,6 +368,43 @@ public sealed class ModpackManagerWindow : Window
 
         card.Child = grid;
         return card;
+    }
+
+    /// <summary>旧式安装 → 独立版本：把根目录里的这些文件搬进 versions/&lt;名字&gt;/，不重新下载。</summary>
+    private async Task MigrateLegacy(ModpackRecord rec, Button btn)
+    {
+        var msg = $"把整合包「{rec.Name}」改成独立版本？\n\n"
+                  + $"会在 versions\\{rec.Name} {rec.Version}\\ 建一个新版本，"
+                  + $"把它当初装进游戏根目录的 {rec.Files.Count} 个文件（模组、配置等）搬进去，"
+                  + "根目录的 mods / config 就会恢复干净，你的其他版本也不再被这些模组影响。\n\n"
+                  + "· 不会重新下载任何文件\n"
+                  + "· 不会动你的存档（存档在 versions 外的 saves 目录，需要的话迁移后自己拷过去）\n"
+                  + "· 迁移前请先关掉正在运行的游戏\n\n"
+                  + "继续吗？";
+
+        if (MessageBox.Show(this, msg, "迁移为独立版本", MessageBoxButton.YesNo, MessageBoxImage.Question)
+            != MessageBoxResult.Yes) return;
+
+        btn.IsEnabled = false;
+        var old = btn.Content;
+        btn.Content = "迁移中…";
+        try
+        {
+            var migrated = await ModpackService.MigrateLegacyAsync(_gameDir, rec);
+            Reload();
+            _ = _onChanged.Invoke();
+            MessageBox.Show(this,
+                $"迁移完成。\n\n新版本：{migrated.VersionId}\n位置：versions\\{migrated.VersionId}\\\n\n"
+                + "到「游戏版本」页选中它启动即可；根目录里这个整合包的模组已经搬走了。",
+                "NEX", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            btn.IsEnabled = true;
+            btn.Content = old;
+            MessageBox.Show(this, "迁移失败：\n" + ex.Message, "NEX",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private void Uninstall(ModpackRecord rec)
