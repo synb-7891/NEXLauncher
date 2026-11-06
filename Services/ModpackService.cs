@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Net.Http;
@@ -51,14 +52,7 @@ public sealed class ModpackService
     /// <summary>版本目录里的标记文件：证明这个版本是整合包实例（启动时强制版本隔离）。</summary>
     public const string MarkerFileName = ".nex-modpack";
 
-    private static readonly HttpClient Http = CreateClient();
-
-    private static HttpClient CreateClient()
-    {
-        var c = new HttpClient { Timeout = TimeSpan.FromMinutes(30) };
-        c.DefaultRequestHeaders.UserAgent.ParseAdd("NEXLauncher/0.4 (+https://github.com/synb-7891/NEXLauncher)");
-        return c;
-    }
+    private static readonly HttpClient Http = MirrorHttp.CreateClient(TimeSpan.FromMinutes(30));
 
     public static string InstancesRoot(string gameDir) => Path.Combine(gameDir, "nex-modpacks");
 
@@ -225,48 +219,126 @@ public sealed class ModpackService
         }
         catch { /* 标记失败不影响安装 */ }
 
-        // 2) 下载 files[]（只下客户端需要的），全部落到版本目录里
+        // 2) 下载 files[]（只下客户端需要的），并行下载全部落到版本目录里
         var clientFiles = info.Files.Where(f => f.ClientEnv != "unsupported").ToList();
         long totalBytes = clientFiles.Sum(f => f.Size > 0 ? f.Size : 8L * 1024 * 1024);
         long done = 0;
+        var completedCount = 0;
         var installed = new List<string>();
+        var failures = new List<string>();
+        var reportLock = new object();
 
+        // 预解析目标路径（非法路径直接报错）
+        var plan = new List<(ModpackFile File, string Dest, string Rel)>();
         foreach (var f in clientFiles)
         {
-            ct.ThrowIfCancellationRequested();
             var rel = SafeRelative(f.Path);
             var dest = Path.GetFullPath(Path.Combine(versionDir, rel));
             if (!dest.StartsWith(versionDir, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("整合包内包含非法路径：" + f.Path);
-
             Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+            plan.Add((f, dest, rel));
+        }
+
+        async Task DownloadOneAsync((ModpackFile File, string Dest, string Rel) item)
+        {
+            ct.ThrowIfCancellationRequested();
+            var (f, dest, rel) = item;
+            var fileName = Path.GetFileName(dest);
 
             if (f.Url != null)
             {
-                await DownloadFileAsync(f.Url, dest, (read, _) =>
-                {
-                    var pct = totalBytes > 0 ? Math.Min(0.98, (done + read) / (double)totalBytes) : 0.5;
-                    progress?.Report(($"正在下载 {Path.GetFileName(dest)}（{installed.Count + 1}/{clientFiles.Count}）", pct));
-                }, ct);
+                // 候选源：镜像开启 → 镜像优先、官方兜底；关闭则相反
+                var candidates = MirrorHttp.Candidates(f.Url);
+                Exception? lastErr = null;
+                var ok = false;
 
-                // 校验哈希（有就校验，失败重下一次）
+                // 第 1 轮用首选源，失败后第 2 轮换备用源（共两次机会）
+                for (var attempt = 0; attempt < 2 && !ok; attempt++)
+                {
+                    var url = candidates[Math.Min(attempt, candidates.Count - 1)];
+                    try
+                    {
+                        await DownloadFileAsync(url, dest, (read, _) =>
+                        {
+                            var baseDone = Interlocked.Read(ref done);
+                            var pct = totalBytes > 0
+                                ? Math.Min(0.98, (baseDone + read) / (double)totalBytes)
+                                : 0.5;
+                            progress?.Report(($"正在下载 {fileName}（{completedCount + 1}/{clientFiles.Count}）", pct));
+                        }, ct);
+                        ok = true;
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception ex) { lastErr = ex; }
+                }
+
+                if (!ok)
+                {
+                    lock (reportLock) failures.Add($"{fileName}：{lastErr?.Message}");
+                    return;
+                }
+
+                // 校验哈希（有就校验，失败换源重下一次）
                 if (!await VerifyAsync(dest, f.Sha512, f.Sha1))
                 {
-                    progress?.Report(($"文件校验失败，重新下载 {Path.GetFileName(dest)}", 0.5));
+                    progress?.Report(($"文件校验失败，换源重新下载 {fileName}", 0.5));
                     try { File.Delete(dest); } catch { }
-                    await DownloadFileAsync(f.Url, dest, null, ct);
+                    try
+                    {
+                        await DownloadFileAsync(candidates[^1], dest, null, ct);
+                        if (!await VerifyAsync(dest, f.Sha512, f.Sha1))
+                            lock (reportLock) failures.Add($"{fileName}：哈希校验失败");
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception ex)
+                    {
+                        lock (reportLock) failures.Add($"{fileName}：重下失败（{ex.Message}）");
+                    }
                 }
             }
             else if (!File.Exists(dest))
             {
                 // 没有下载地址（如 CurseForge 包）：留空，最后统一提示
+                return;
             }
 
-            done += f.Size > 0 ? f.Size : 0;
-            installed.Add(rel);
-            progress?.Report(($"已安装 {Path.GetFileName(dest)}（{installed.Count}/{clientFiles.Count}）",
-                totalBytes > 0 ? Math.Min(0.99, done / (double)totalBytes) : 0.5));
+            if (f.Size > 0) Interlocked.Add(ref done, f.Size);
+            var cnt = Interlocked.Increment(ref completedCount);
+            lock (reportLock) installed.Add(rel);
+            progress?.Report(($"已安装 {fileName}（{cnt}/{clientFiles.Count}）",
+                totalBytes > 0 ? Math.Min(0.99, Interlocked.Read(ref done) / (double)totalBytes) : 0.5));
         }
+
+        // 并行下载：同时 6 个文件，远快于逐个串行；单个失败不中断整体
+        const int MaxParallel = 6;
+        var cancelled = false;
+        using (var gate = new SemaphoreSlim(MaxParallel, MaxParallel))
+        {
+            var tasks = plan.Select(async item =>
+            {
+                try { await gate.WaitAsync(ct); }
+                catch (OperationCanceledException) { cancelled = true; return; }
+                try { await DownloadOneAsync(item); }
+                catch (OperationCanceledException) { cancelled = true; }
+                catch (Exception ex)
+                {
+                    lock (reportLock) failures.Add($"{Path.GetFileName(item.Dest)}：{ex.Message}");
+                }
+                finally { gate.Release(); }
+            });
+            await Task.WhenAll(tasks);
+        }
+        if (cancelled || ct.IsCancellationRequested) ct.ThrowIfCancellationRequested();
+
+        if (failures.Count > 0)
+            throw new InvalidOperationException(
+                $"有 {failures.Count} 个文件下载失败（已安装 {installed.Count}/{clientFiles.Count}）：\n"
+                + string.Join("\n", failures.Take(8))
+                + (failures.Count > 8 ? $"\n… 等共 {failures.Count} 个" : "")
+                + "\n\n可尝试：1) 设置里关闭/开启「下载镜像加速」后重试；2) 检查网络后重试。已下载的文件会保留。");
+
+        progress?.Report(($"全部文件下载完成（{installed.Count}/{clientFiles.Count}）", 0.98));
 
         // 3) 解压 overrides / client-overrides 到版本目录
         progress?.Report(("正在解压 overrides（配置、资源包、模组配置）…", 0.99));
@@ -552,21 +624,30 @@ public sealed class ModpackService
                 var total = resp.Content.Headers.ContentLength ?? 0;
                 await using var net = await resp.Content.ReadAsStreamAsync(ct);
                 await using var fs = File.Create(dest);
-                var buffer = new byte[81920];
+                // 1MB 缓冲：小文件多的大批量下载场景下比默认 80K 快数倍
+                var buffer = new byte[1024 * 1024];
                 long read = 0;
+                var lastReport = Stopwatch.GetTimestamp();
                 int n;
                 while ((n = await net.ReadAsync(buffer, ct)) > 0)
                 {
                     await fs.WriteAsync(buffer.AsMemory(0, n), ct);
                     read += n;
-                    onProgress?.Invoke(read, total);
+                    // 至少间隔 100ms 才回报一次进度，避免 6 个并行任务刷爆 UI 消息队列
+                    var now = Stopwatch.GetTimestamp();
+                    if (now - lastReport > Stopwatch.Frequency / 10)
+                    {
+                        lastReport = now;
+                        onProgress?.Invoke(read, total);
+                    }
                 }
+                onProgress?.Invoke(read, total);
                 return;
             }
             catch (Exception ex) when (attempt < 2 && ex is not OperationCanceledException)
             {
                 last = ex;
-                await Task.Delay(800 * (attempt + 1), ct);
+                await Task.Delay(500 * (attempt + 1), ct);
             }
         }
         throw last ?? new IOException("下载失败：" + url);

@@ -167,27 +167,83 @@ public partial class MainWindow
     /// <summary>创建（并缓存）WebView2 环境：在构造函数最开始就发起，与耗时的构造工作并行。</summary>
     private static Task<CoreWebView2Environment> GetEnvironmentAsync()
     {
-        _environmentTask ??= CreateEnvironmentSafeAsync(PickEnvironmentDir());
+        _environmentTask ??= CreateEnvironmentSafeAsync(PickEnvironmentDir(), !_gpuDisabled);
         return _environmentTask;
     }
 
     /// <summary>
-    /// 创建 WebView2 环境。两个开关是老机器上 0x800705B4 的直接解药：
-    ///   --disable-gpu                  G5400 / UHD610 这类老核显，硬件加速会让
-    ///                                  CreateCoreWebView2ControllerAsync 直接超时
-    ///   CalculateNativeWinOcclusion    启动阶段窗口在屏幕外做首帧，Chromium 会判定
-    ///                                  "被遮挡"并暂停渲染，导致首帧永远等不到
-    /// 之前只在注释里写了这个坑、参数却没加，所以时好时坏。
+    /// 启动时立刻用「上次的结论」预热一次环境，但不等它：
+    /// 若上次已判定 GPU 不可用，这里直接软件渲染，省掉 3 次无谓的失败重试。
     /// </summary>
-    private static Task<CoreWebView2Environment> CreateEnvironmentSafeAsync(string? profileDir = null)
+    private static void WarmUpEnvironment()
     {
-        var opts = new CoreWebView2EnvironmentOptions(
-            "--disable-gpu " +
-            "--disable-gpu-compositing " +
-            "--disable-features=CalculateNativeWinOcclusion " +
-            "--disable-backgrounding-occluded-windows " +
-            "--disable-renderer-backgrounding");
+        LoadGpuState();
+        _ = GetEnvironmentAsync();
+    }
+
+    /// <summary>
+    /// 创建 WebView2 环境。
+    ///
+    /// 【GPU 加速】新版界面要跑出高刷手感，必须开硬件加速：
+    ///   --enable-gpu-rasterization  光栅化交给 GPU（滚动/动画不再是 CPU 逐像素画）
+    ///   --enable-zero-copy          纹理零拷贝，减少每帧一次内存复制
+    ///   --ignore-gpu-blocklist      老核显常被 Chromium 拉黑名单，这里强行启用
+    ///   --disable-gpu               ✗ 以前为了兼容 G5400/UHD610 加了这两条，
+    ///   --disable-gpu-compositing   ✗ 代价是整个界面软件渲染，滚动和动画明显发涩。
+    ///                               现改为「GPU 优先 + 绑定失败自动回退软件渲染」，见 _gpuDisabled。
+    ///
+    /// 【遮挡降频】启动阶段窗口在屏幕外做首帧，Chromium 会判定"被遮挡"暂停渲染，
+    /// 导致首帧永远等不到；--disable-features=CalculateNativeWinOcclusion 解决。
+    /// </summary>
+    private static Task<CoreWebView2Environment> CreateEnvironmentSafeAsync(string? profileDir = null, bool gpu = true)
+    {
+        var opts = new CoreWebView2EnvironmentOptions(gpu ? GpuArgs : SoftwareArgs);
         return CoreWebView2Environment.CreateAsync(null, profileDir ?? WebViewProfileDir, opts);
+    }
+
+    private const string SoftwareArgs =
+        "--disable-gpu " +
+        "--disable-gpu-compositing " +
+        "--disable-features=CalculateNativeWinOcclusion " +
+        "--disable-backgrounding-occluded-windows " +
+        "--disable-renderer-backgrounding";
+
+    private const string GpuArgs =
+        "--enable-gpu-rasterization " +
+        "--enable-zero-copy " +
+        "--ignore-gpu-blocklist " +
+        "--enable-features=CanvasOopRasterization " +
+        "--disable-features=CalculateNativeWinOcclusion " +
+        "--disable-backgrounding-occluded-windows " +
+        "--disable-renderer-backgrounding";
+
+    /// <summary>本机 GPU 加速是否已被判定不可用（绑定失败过 → 本次及后续启动都用软件渲染）。</summary>
+    private static bool _gpuDisabled;
+
+    /// <summary>GPU 失败次数记录：连续两轮启动都失败才永久放弃 GPU，避免偶发故障误伤高刷体验。</summary>
+    private static string GpuStatePath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "NEXLauncher", "gpu.state");
+
+    private static void LoadGpuState()
+    {
+        try
+        {
+            if (!File.Exists(GpuStatePath)) return;
+            if (int.TryParse(File.ReadAllText(GpuStatePath).Trim(), out var fails) && fails >= 2)
+                _gpuDisabled = true;
+        }
+        catch { }
+    }
+
+    private static void SaveGpuFails(int fails)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(GpuStatePath)!);
+            File.WriteAllText(GpuStatePath, fails.ToString());
+        }
+        catch { }
     }
 
     private static readonly System.Diagnostics.Stopwatch BootClock = System.Diagnostics.Stopwatch.StartNew();
@@ -284,7 +340,20 @@ public partial class MainWindow
             // 环境在构造函数最开始就并行创建（静态缓存），这里通常直接取到现成的
             BootLog("取 WebView2 环境");
             TrimOwnMemory();
-            var env = await GetEnvironmentAsync();
+            CoreWebView2Environment env;
+            try
+            {
+                env = await GetEnvironmentAsync();
+            }
+            catch (Exception ex)
+            {
+                // GPU 环境创建都失败（老核显驱动崩）：立刻降级软件渲染，绝不因此丢掉新版界面
+                BootLog("GPU 环境创建失败，降级软件渲染：" + ex.Message);
+                _gpuDisabled = true;
+                SaveGpuFails(3);
+                _environmentTask = null;
+                env = await CreateEnvironmentSafeAsync(PickEnvironmentDir(), false);
+            }
             BootLog("环境已就绪，绑定控件");
             // WPF 的 HwndHost 是惰性建 HWND 的：控件可见 ≠ 窗口句柄已存在。
             // 没有句柄就调 EnsureCoreWebView2Async，控制器创建会一直等到超时。
@@ -299,6 +368,7 @@ public partial class MainWindow
             //   正常窗口的某一次尝试成功为止（上午时钟正常时同样代码一次成功）。
             Exception? lastBindError = null;
             var bindOk = false;
+            var gpuFails = 0;
             for (int attempt = 1; attempt <= 10 && !bindOk; attempt++)
             {
                 string dir;
@@ -306,21 +376,35 @@ public partial class MainWindow
                 else if (attempt == 2 && boundDir != WebViewProfileDir) dir = WebViewProfileDir;
                 else dir = WebViewProfileDir + "-rec-" + Guid.NewGuid().ToString("N")[..8];
 
+                // GPU 优先：前 3 次尝试用硬件加速环境；都失败说明本机显卡/驱动扛不住，
+                // 立刻切回软件渲染继续把界面拉起来（老机器兼容兜底，绝不让界面起不来）。
+                var useGpu = !_gpuDisabled && attempt <= 3;
                 try
                 {
-                    var e = attempt == 1 ? env : await CreateEnvironmentSafeAsync(dir);
-                    if (attempt > 1) BootLog($"第 {attempt} 次尝试绑定（目录 {Path.GetFileName(dir)}）");
+                    var e = attempt == 1 && useGpu ? env : await CreateEnvironmentSafeAsync(dir, useGpu);
+                    if (attempt > 1) BootLog($"第 {attempt} 次尝试绑定（{(useGpu ? "GPU" : "软件渲染")}，目录 {Path.GetFileName(dir)}）");
                     var sw = System.Diagnostics.Stopwatch.StartNew();
                     await WebHost.EnsureCoreWebView2Async(e);
                     _environmentDir = dir;
                     SaveLastGoodDir(dir);
+                    if (useGpu) { _gpuDisabled = false; SaveGpuFails(0); }
                     bindOk = true;
-                    BootLog($"控件已绑定（第 {attempt} 次尝试成功，内部计时 {sw.ElapsedMilliseconds}ms）");
+                    BootLog($"控件已绑定（第 {attempt} 次尝试成功，{(useGpu ? "GPU 加速" : "软件渲染")}，内部计时 {sw.ElapsedMilliseconds}ms）");
                 }
                 catch (Exception ex)
                 {
                     lastBindError = ex;
-                    BootLog($"第 {attempt} 次绑定失败：{ex.Message}");
+                    BootLog($"第 {attempt} 次绑定失败{(useGpu ? "（GPU）" : "（软件）")}：{ex.Message}");
+                    if (useGpu)
+                    {
+                        gpuFails++;
+                        if (gpuFails >= 3 && !_gpuDisabled)
+                        {
+                            _gpuDisabled = true;
+                            SaveGpuFails(3);
+                            BootLog("★ GPU 加速连续失败 3 次，本次及后续启动改用软件渲染");
+                        }
+                    }
                     await Task.Delay(200);
                     TrimOwnMemory();
                 }

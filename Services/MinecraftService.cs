@@ -29,9 +29,7 @@ public sealed class MinecraftService
     public MinecraftService(string gameDirectory)
     {
         _gameDirectory = gameDirectory;
-        _launcher = new MinecraftLauncher(new MinecraftPath(gameDirectory));
-        _launcher.FileProgressChanged += (_, e) => FileProgressChanged?.Invoke(this, e);
-        _launcher.ByteProgressChanged += (_, e) => ByteProgressChanged?.Invoke(this, e);
+        _launcher = CreateLauncher();
     }
 
     /// <summary>
@@ -41,12 +39,28 @@ public sealed class MinecraftService
     /// </summary>
     private readonly SemaphoreSlim _installLock = new(1, 1);
 
+    /// <summary>
+    /// 创建 CmlLib 启动器实例。镜像加速开启时注入改写过的 HttpClient，
+    /// 版本清单 / 版本 JSON / client.jar / libraries / assets 全部走国内镜像（BMCLAPI），
+    /// 避免直连 Mojang 官方源导致整合包安装「正在准备基底版本」阶段卡死或极慢。
+    /// </summary>
     private MinecraftLauncher CreateLauncher()
     {
-        var l = new MinecraftLauncher(new MinecraftPath(_gameDirectory));
-        l.FileProgressChanged += (_, e) => FileProgressChanged?.Invoke(this, e);
-        l.ByteProgressChanged += (_, e) => ByteProgressChanged?.Invoke(this, e);
-        return l;
+        var path = new MinecraftPath(_gameDirectory);
+        MinecraftLauncher launcher;
+        if (MirrorHttp.UseMirror)
+        {
+            var parameters = MinecraftLauncherParameters.CreateDefault(
+                path, MirrorHttp.CreateClient(TimeSpan.FromMinutes(30)));
+            launcher = new MinecraftLauncher(parameters);
+        }
+        else
+        {
+            launcher = new MinecraftLauncher(path);
+        }
+        launcher.FileProgressChanged += (_, e) => FileProgressChanged?.Invoke(this, e);
+        launcher.ByteProgressChanged += (_, e) => ByteProgressChanged?.Invoke(this, e);
+        return launcher;
     }
 
     private static void SafeDispose(MinecraftLauncher? l)

@@ -189,14 +189,29 @@ public sealed class ModloaderService
     public async Task<string> InstallForgeAsync(string gameDirectory, string gameVersion, string forgeVersion)
     {
         var instId = $"{gameVersion}-{forgeVersion}";
-        var url = $"https://maven.minecraftforge.net/net/minecraftforge/forge/{instId}/forge-{instId}-installer.jar";
+        var officialUrl = $"https://maven.minecraftforge.net/net/minecraftforge/forge/{instId}/forge-{instId}-installer.jar";
+        // 候选源：镜像开启走 BMCLAPI 优先，官方兜底；关闭则官方优先
+        var candidates = MirrorHttp.Candidates(officialUrl);
         var tempJar = Path.Combine(Path.GetTempPath(), $"NEX-forge-{instId}-installer.jar");
 
+        Exception? lastErr = null;
+        var ok = false;
         using (var dl = new HttpClient { Timeout = TimeSpan.FromMinutes(5) })
         {
-            var bytes = await dl.GetByteArrayAsync(url);
-            await File.WriteAllBytesAsync(tempJar, bytes);
+            foreach (var url in candidates)
+            {
+                try
+                {
+                    var bytes = await dl.GetByteArrayAsync(url);
+                    await File.WriteAllBytesAsync(tempJar, bytes);
+                    ok = true;
+                    break;
+                }
+                catch (Exception ex) { lastErr = ex; }
+            }
         }
+        if (!ok)
+            throw new InvalidOperationException("Forge 安装器下载失败：" + lastErr?.Message, lastErr);
 
         var java = OneClickServerService.FindJava()
             ?? throw new FileNotFoundException(

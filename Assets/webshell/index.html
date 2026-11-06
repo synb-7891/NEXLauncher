@@ -727,6 +727,35 @@ body.is-mobile .tabbar{display:flex}
 .skin-tags{display:flex;gap:4px;flex-wrap:wrap;justify-content:center}
 .skin-tags i{font-style:normal;font-size:10px;padding:1px 6px;border-radius:20px;
   background:var(--surface-alt);color:var(--muted)}
+
+/* ================= 流畅度优化（纯性能，不改任何视觉与交互） =================
+   原则：
+     1. 只提升合成层 / 减少重排重绘，不改配色、字号、间距、圆角、滚动条等任何外观；
+     2. 动画只跑 transform / opacity，不碰 left/top/width/height；
+     3. 长列表视口外不参与布局绘制，滚动更跟手。
+   注意：这里刻意不给 .page 加 transform / contain —— .res-modal 是 .page 内的
+   position:fixed 弹层，一旦 .page 变成 fixed 的包含块，弹窗会只盖住内容区。 */
+html{scroll-behavior:smooth}
+html,body{overscroll-behavior:none}
+.page{
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
+  transition:opacity .18s cubic-bezier(.22,.61,.36,1),transform .18s cubic-bezier(.22,.61,.36,1);
+}
+/* 卡片 / 面板提升到合成层：hover、拖拽、滚动时只重绘自己这一块 */
+.widget,.panel,.ver-item,.res-card,.skin-card,.tool-card,.theme-card,.mod-card{
+  -webkit-backface-visibility:hidden;backface-visibility:hidden;
+}
+.widget{transform:translateZ(0)}
+.widget.dragging{will-change:transform}
+/* 滚动长列表：视口外跳过布局与绘制（首屏更快、滚动更顺） */
+.ver-item,.res-card,.skin-card,.tool-card,.mod-card{
+  content-visibility:auto;contain-intrinsic-size:auto 110px;
+}
+/* 过渡只作用于会变的三个属性，避免 transition:all 触发无谓的样式重算 */
+.tbtn{transition:background .14s ease-out,color .14s ease-out,border-color .14s ease-out}
+/* 毛玻璃容器显式提升合成层，避免每帧重新栅格化底图 */
+.topbar,.sidebar,.modal-mask,.res-modal{transform:translateZ(0)}
 </style>
 </head>
 <body>
@@ -2035,8 +2064,10 @@ document.querySelectorAll(".widget").forEach(w=>{
     if(e.target.closest("button")) return;            // 按钮不触发拖拽
     if(document.body.classList.contains("is-mobile")) return;
     const r=canvas.getBoundingClientRect();
+    /* 尺寸/初始位置在按下时读一次（只触发一次布局），拖动过程不再读 offset* —— 避免布局抖动 */
     drag={w, sx:e.clientX, sy:e.clientY, ox:e.clientX-r.left, oy:e.clientY-r.top,
-          moved:false, r};
+          moved:false, r, ww:w.offsetWidth, wh:w.offsetHeight, bx:w.offsetLeft, by:w.offsetTop,
+          px:null, py:null};
     w.setPointerCapture(e.pointerId);
   });
 });
@@ -2045,24 +2076,27 @@ canvas.addEventListener("pointermove", e=>{
   const dx=e.clientX-drag.sx, dy=e.clientY-drag.sy;
   if(!drag.moved && Math.hypot(dx,dy)<6) return;      // 6px 内视为点击
   drag.moved=true; drag.w.classList.add("dragging");
-  const r=drag.r, ww=drag.w.offsetWidth, wh=drag.w.offsetHeight;
+  const r=drag.r, ww=drag.ww, wh=drag.wh;
   let px=Math.min(Math.max(e.clientX-r.left-ww/2, 4), r.width-ww-4);
   let py=Math.min(Math.max(e.clientY-r.top-wh/2, 4), r.height-wh-4);
   // 居中对齐吸附
   const cx=px+ww/2, cy=py+wh/2, snap=14;
   gv.classList.toggle("show", Math.abs(cx-r.width/2)<snap);
   gh.classList.toggle("show", Math.abs(cy-r.height/2)<snap);
-  drag.w.style.left=px+"px"; drag.w.style.top=py+"px";
+  drag.px=px; drag.py=py;
+  /* 关键：只写 transform —— 走 GPU 合成层平移，不触发重排/重绘；缩放值与原样式一致 */
+  drag.w.style.transform=`translate3d(${px-drag.bx}px,${py-drag.by}px,0) scale(1.025)`;
 });
 canvas.addEventListener("pointerup", e=>{
   if(!drag) return;
   const w=drag.w; w.classList.remove("dragging");
   gv.classList.remove("show"); gh.classList.remove("show");
   if(drag.moved){
+    w.style.transform="";                              // 先清掉合成层位移
     const r=drag.r;
-    let x=w.offsetLeft, y=w.offsetTop;
-    if(Math.abs(x+w.offsetWidth/2 - r.width/2)<14)  x=(r.width-w.offsetWidth)/2;   // 吸附水平居中
-    if(Math.abs(y+w.offsetHeight/2 - r.height/2)<14) y=(r.height-w.offsetHeight)/2; // 吸附垂直居中
+    let x=drag.px!=null?drag.px:drag.bx, y=drag.py!=null?drag.py:drag.by;
+    if(Math.abs(x+drag.ww/2 - r.width/2)<14)  x=(r.width-drag.ww)/2;   // 吸附水平居中
+    if(Math.abs(y+drag.wh/2 - r.height/2)<14) y=(r.height-drag.wh)/2;  // 吸附垂直居中
     positions[w.dataset.id]={x:+(x/r.width*100).toFixed(2), y:+(y/r.height*100).toFixed(2)};
     place(w,positions[w.dataset.id]);
     localStorage.setItem(STORE, JSON.stringify(positions));
@@ -2073,7 +2107,10 @@ canvas.addEventListener("pointerup", e=>{
   }
   drag=null;
 });
-canvas.addEventListener("pointercancel", ()=>{ if(drag){drag.w.classList.remove("dragging");drag=null;} });
+canvas.addEventListener("pointercancel", ()=>{
+  if(drag){drag.w.style.transform="";drag.w.classList.remove("dragging");drag=null;}
+  gv.classList.remove("show"); gh.classList.remove("show");
+});
 
 /* ================= 启动按钮（真实启动） ================= */
 const btnLaunch=document.getElementById("btnLaunch"), prog=document.getElementById("prog");
