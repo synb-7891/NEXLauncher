@@ -2159,7 +2159,7 @@ function applyState(s){
   /* ---- 账号 ---- */
   const acc = s.account || {};
   document.querySelectorAll(".w-profile .name").forEach(el=>{
-    el.innerHTML = esc(acc.name||"玩家") + ` <span class="badge">${esc(acc.kind||"离线模式")}</span>`;
+    el.innerHTML = esc(acc.name||"未登录") + ` <span class="badge">${esc(acc.kind||"离线模式")}</span>`;
   });
   document.querySelectorAll(".w-profile .mode").forEach(el=>{
     el.textContent = acc.loggedIn ? "正版账号 · 皮肤已同步" : "离线账号 · 单人皮肤已启用";
@@ -2349,7 +2349,7 @@ function renderAccount(){
   const modeEl = document.getElementById("accMode");
   if(modeEl) modeEl.textContent = acc.loggedIn
     ? `${acc.kind || "正版账号"} · 已登录`
-    : `${acc.kind || "离线模式"} · 未登录（启动时将使用离线账号）`;
+    : `${acc.kind || "离线模式"} · 未登录（启动时将使用离线账号${acc.offlineName ? " " + acc.offlineName : ""}，登录后自动更换）`;
   const skinEl = document.getElementById("accSkin");
   if(skinEl) skinEl.textContent = acc.loggedIn ? "皮肤：正版皮肤已同步" : "皮肤：本地皮肤";
 }

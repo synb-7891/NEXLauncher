@@ -1148,10 +1148,10 @@ public partial class MainWindow
         var selected = SideVersionBox.SelectedItem as string
                        ?? (installed.Contains(_settings.LastQuickVersion) ? _settings.LastQuickVersion : installed.FirstOrDefault());
 
-        var accountName = _session?.Username;
+        // 未登录时不把上次的离线名字当成当前账号展示（用户反馈：退出后还显示旧名字）；
+        // 名字只通过 offlineName 字段给说明文字引用
+        var accountName = _session?.Username ?? "";
         var isMicrosoft = string.Equals(_settings.LastAccountType, "microsoft", StringComparison.OrdinalIgnoreCase);
-        if (string.IsNullOrWhiteSpace(accountName))
-            accountName = string.IsNullOrWhiteSpace(_settings.LastOfflineName) ? "未登录" : _settings.LastOfflineName;
 
         PostJson(new
         {
@@ -1161,6 +1161,9 @@ public partial class MainWindow
                 name = accountName,
                 kind = isMicrosoft ? "微软正版" : "离线模式",
                 loggedIn = _session != null,
+                offlineName = string.IsNullOrWhiteSpace(_settings.LastOfflineName)
+                    ? (_settings.QuickOfflineName ?? "Player")
+                    : _settings.LastOfflineName,
                 uuid = _session?.UUID ?? _settings.MicrosoftSessionUuid
             },
             versions,

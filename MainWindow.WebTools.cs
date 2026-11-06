@@ -1059,6 +1059,7 @@ public partial class MainWindow
             await File.WriteAllBytesAsync(path, bytes);
             var name = _session?.Username;
             if (string.IsNullOrWhiteSpace(name)) name = _settings.LastOfflineName;
+            if (string.IsNullOrWhiteSpace(name)) name = _settings.QuickOfflineName;
             if (string.IsNullOrWhiteSpace(name)) name = "Player";
 
             // 关键：必须先把 authlib-injector 准备好，否则启动时无法注入皮肤代理，
@@ -1128,6 +1129,7 @@ public partial class MainWindow
         {
             var name = _session?.Username;
             if (string.IsNullOrWhiteSpace(name)) name = _settings.LastOfflineName;
+            if (string.IsNullOrWhiteSpace(name)) name = _settings.QuickOfflineName;
             if (string.IsNullOrWhiteSpace(name)) name = "Player";
             // 同「皮肤站应用」：先保证注入器就绪，否则游戏里不会显示
             var agentErr = await LocalSkinServer.Instance.EnsureAgentAsync();
@@ -1354,8 +1356,11 @@ public partial class MainWindow
         {
             account = new
             {
-                name = _session?.Username ?? (_settings.LastOfflineName ?? ""),
+                name = _session?.Username ?? "",
                 kind = string.Equals(_settings.LastAccountType, "microsoft", StringComparison.OrdinalIgnoreCase) ? "微软正版" : "离线模式",
+                offlineName = string.IsNullOrWhiteSpace(_settings.LastOfflineName)
+                    ? (_settings.QuickOfflineName ?? "Player")
+                    : _settings.LastOfflineName,
                 loggedIn = _session != null
             },
             versions = new { installed = installed.Count, selected = CurrentVersionId() },

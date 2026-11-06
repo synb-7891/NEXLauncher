@@ -374,10 +374,11 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog() == true)
         {
             _session = MinecraftService.CreateOfflineSession(dialog.UserName);
-            // 记录账号类型和离线用户名，下次启动自动恢复
+            // 记录账号类型和离线用户名，下次启动自动恢复。
+            // 注意：不要覆盖 QuickOfflineName —— 那是「退出登录后默认用谁启动」，
+            // 被覆盖会让用户退出后仍然顶着上一个账号，服务器那边等于换了个人。
             _settings.LastAccountType = "offline";
             _settings.LastOfflineName = dialog.UserName;
-            _settings.QuickOfflineName = dialog.UserName;
             _settings.Save();
             SyncCurrentToAccounts();
             UpdateAccountUi();
@@ -389,6 +390,9 @@ public partial class MainWindow : Window
         var wasMicrosoft = _settings.LastAccountType == "microsoft";
         _session = null;
         _settings.LastAccountType = "";
+        // 退出登录 = 回到「未登录」状态：清掉上次账号名，下次启动用 QuickOfflineName（默认 Player）。
+        // 不清的话，界面写着未登录、实际仍以旧账号名启动，服务器那边就是另一个人，登录状态会丢。
+        _settings.LastOfflineName = "";
         _settings.Save();
         if (wasMicrosoft) await _minecraftService.SignOutAsync();
         UpdateAccountUi();
@@ -3717,7 +3721,6 @@ public partial class MainWindow : Window
                 _session = MinecraftService.CreateOfflineSession(item.Name);
                 _settings.LastAccountType = "offline";
                 _settings.LastOfflineName = item.Name;
-                _settings.QuickOfflineName = item.Name;
                 _settings.AuthlibApiRoot = "";
                 _settings.AuthlibServerName = "";
                 break;
