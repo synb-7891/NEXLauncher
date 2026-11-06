@@ -936,20 +936,40 @@ public partial class MainWindow
                 return;
             }
 
-            var ok = LocalSkinServer.Instance.ApplySkin(path, slim ? "slim" : "wide", name);
+            var ok = LocalSkinServer.Instance.ApplySkin(path, slim ? "slim" : "wide", name, PublicSkinUrlOf(url));
             _settings.OfflineSkinPath = path;
             _settings.OfflineSkinModel = slim ? "slim" : "wide";
             _settings.OfflineSkinPlayer = name;
+            _settings.OfflineSkinPublicUrl = PublicSkinUrlOf(url) ?? "";
             _settings.Save();
 
             // 服务器皮肤覆盖：登录服的皮肤由服务器下发，本地皮肤服务器管不到，
             // 装 CustomSkinLoader 强制用本地皮肤（对服务器也生效）
             var cslMsg = await SetupCustomSkinLoaderAsync(name, path);
 
-            ToolReply(op, ok, ok ? $"皮肤已应用（{name}），下次启动游戏生效{cslMsg}" : "已下载到本地，但应用失败：请确认皮肤是 64x64 或 64x32 的 PNG",
-                new { path });
+            ToolReply(op, ok,
+                ok
+                    ? $"皮肤已应用（{name}）" + (PublicSkinUrlOf(url) != null ? "，服务器 / 局域网里别人也能看到" : "") +
+                      "；游戏内立即生效：Esc → 保存并退出 → 再进存档或服务器（不用重启游戏）" + cslMsg
+                    : "已下载到本地，但应用失败：请确认皮肤是 64x64 或 64x32 的 PNG",
+                new { path, publicUrl = PublicSkinUrlOf(url) });
         }
         catch (Exception ex) { ToolReply(op, false, "应用失败：" + ex.Message); }
+    }
+
+    /// <summary>
+    /// 皮肤库（Ely.by）给的是公网地址，可以直接写进玩家档案，让别的玩家客户端也取到；
+    /// 本地路径 / 回环地址返回 null（别人访问不到）。
+    /// </summary>
+    private static string? PublicSkinUrlOf(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var u)) return null;
+        if (u.Scheme != "http" && u.Scheme != "https") return null;
+        var host = u.Host.ToLowerInvariant();
+        if (host is "localhost" or "127.0.0.1") return null;
+        // Ely.by 返回的可能是 http，统一升到 https 更稳
+        if (host.EndsWith("ely.by")) return "https://" + u.Host + u.PathAndQuery;
+        return u.ToString();
     }
 
     private async Task SkinUploadAsync(string op)
@@ -973,12 +993,13 @@ public partial class MainWindow
                 ToolReply(op, false, "皮肤组件（authlib-injector）下载失败：" + agentErr + "，请检查网络后重试");
                 return;
             }
-            var ok = LocalSkinServer.Instance.ApplySkin(file, "wide", name);
+            var ok = LocalSkinServer.Instance.ApplySkin(file, "wide", name, null);
             _settings.OfflineSkinPath = file;
             _settings.OfflineSkinPlayer = name;
+            _settings.OfflineSkinPublicUrl = "";
             _settings.Save();
             var cslMsg = await SetupCustomSkinLoaderAsync(name, file);
-            ToolReply(op, ok, ok ? $"本地皮肤已应用，下次启动游戏生效{cslMsg}" : "应用失败：皮肤必须是 64x64 或 64x32 的 PNG", new { path = file });
+            ToolReply(op, ok, ok ? $"本地皮肤已应用；游戏内立即生效：Esc → 保存并退出 → 再进存档（不用重启游戏）{cslMsg}" : "应用失败：皮肤必须是 64x64 或 64x32 的 PNG", new { path = file });
         }
         catch (Exception ex) { ToolReply(op, false, "应用失败：" + ex.Message); }
     }

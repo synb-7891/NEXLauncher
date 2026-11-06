@@ -101,6 +101,8 @@ public sealed class LauncherSettings
     public string OfflineSkinModel { get; set; } = "wide";
     /// <summary>离线皮肤所属用户名（皮肤只对该名字的离线账号生效）</summary>
     public string OfflineSkinPlayer { get; set; } = "";
+    /// <summary>皮肤的公网原始地址（来自 Ely.by 等皮肤库）；本地服务用它让别的玩家也能取到</summary>
+    public string OfflineSkinPublicUrl { get; set; } = "";
 
     // ---- 更新 ----
     /// <summary>启动时自动检查更新</summary>

@@ -294,7 +294,8 @@ public sealed class MinecraftService
                 && (string.IsNullOrWhiteSpace(settings.OfflineSkinPlayer)
                     || settings.OfflineSkinPlayer == session.Username))
             {
-                server.ApplySkin(settings.OfflineSkinPath, settings.OfflineSkinModel, session.Username);
+                server.ApplySkin(settings.OfflineSkinPath, settings.OfflineSkinModel, session.Username,
+                    settings.OfflineSkinPublicUrl);
                 var agent = server.GetAgentArgument();
                 if (agent != null)
                 {

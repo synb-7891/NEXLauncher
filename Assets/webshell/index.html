@@ -2755,8 +2755,8 @@ if(NEX_APP){
       case "mods-list": renderMods(r); break;
       case "skins-page": renderSkins(r); break;
       case "skin-apply": {
-        /* 皮肤页点「应用」的直接反馈：原生失败走 reject 已有 toast，这里补成功提示 */
-        toast(r._msg || "皮肤已应用，下次启动游戏生效");
+        /* 皮肤页点「应用」：显示原生返回的真实结果（含公网可见性与游戏内生效方式） */
+        toast(r.msg || (r.ok ? "皮肤已应用" : "应用失败"));
         break;
       }
       case "server-status": {

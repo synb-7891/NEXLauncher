@@ -26,6 +26,13 @@ public sealed class LocalSkinServer
     public string Model { get; private set; } = "wide"; // wide / slim
     public string PlayerName { get; private set; } = "Player";
 
+    /// <summary>
+    /// 皮肤的公网原始地址（来自 Ely.by 等皮肤库）。
+    /// 有值时档案里的纹理直接指向这个公网地址——别的玩家客户端也能取到，
+    /// 于是服务器里/局域网里别人也能看见你的皮肤（本地回环地址他们访问不到）。
+    /// </summary>
+    public string? PublicSkinUrl { get; private set; }
+
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(60) };
 
     // 签名密钥（持久化到 tools/skin_signing.key，PEM 格式）
@@ -57,13 +64,14 @@ public sealed class LocalSkinServer
         Path.Combine(Path.GetDirectoryName(AgentJarPath)!, "skin_signing.key");
 
     /// <summary>启动服务器并设置皮肤。返回是否成功。</summary>
-    public bool ApplySkin(string skinPath, string model, string playerName)
+    public bool ApplySkin(string skinPath, string model, string playerName, string? publicUrl = null)
     {
         try
         {
             SkinPath = skinPath;
             Model = model == "slim" ? "slim" : "wide";
             PlayerName = playerName;
+            PublicSkinUrl = NormalizePublicUrl(publicUrl);
             _skinStamp = Stamp(skinPath);
             EnsureKey();
             EnsureStarted();
@@ -73,6 +81,20 @@ public sealed class LocalSkinServer
         {
             return false;
         }
+    }
+
+    /// <summary>只接受真正的公网 http(s) 地址；空串/本地路径一律视为没有。</summary>
+    private static string? NormalizePublicUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return null;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var u)) return null;
+        if (u.Scheme != "http" && u.Scheme != "https") return null;
+        var host = u.Host.ToLowerInvariant();
+        if (host is "localhost" or "127.0.0.1" or "0.0.0.0") return null;
+        if (host.EndsWith(".local") || host.EndsWith(".lan")) return null;
+        // Ely.by 会给 http 地址，统一升 https（客户端对明文图片更严格）
+        if (host.EndsWith("ely.by")) return "https://" + u.Host + u.PathAndQuery;
+        return u.ToString();
     }
 
     /// <summary>皮肤内容指纹（长度 + 内容哈希），用于让客户端重新下载贴图。</summary>
@@ -183,8 +205,16 @@ public sealed class LocalSkinServer
         if (path == "/")
         {
             var pub = (_publicKeyPem ?? "").Replace("\r\n", "\\n").Replace("\n", "\\n");
+            // skinDomains 必须包含纹理所在域名，否则客户端会拒收这张贴图
+            var domains = new List<string> { "127.0.0.1", "localhost" };
+            if (!string.IsNullOrEmpty(PublicSkinUrl) && Uri.TryCreate(PublicSkinUrl, UriKind.Absolute, out var pu))
+            {
+                var h = pu.Host.ToLowerInvariant();
+                if (!domains.Contains(h)) domains.Add(h);
+            }
+            var domainsJson = "[" + string.Join(",", domains.ConvertAll(d => "\"" + d + "\"")) + "]";
             WriteJson(ctx,
-                "{\"skinDomains\":[\"127.0.0.1\",\"localhost\"]," +
+                "{\"skinDomains\":" + domainsJson + "," +
                 "\"signaturePublickey\":\"" + pub + "\"," +
                 "\"meta\":{\"serverName\":\"NEX Launcher Local Skin\"," +
                 "\"implementationName\":\"nex-launcher\",\"implementationVersion\":\"0.4\"," +
@@ -263,7 +293,10 @@ public sealed class LocalSkinServer
             return "{\"id\":\"" + uuid + "\",\"name\":\"" + playerName + "\",\"properties\":[]}";
         }
 
-        var skinUrl = $"http://127.0.0.1:{Port}/skins/skin.png?v={_skinStamp}";
+        // 有公网地址就用公网地址：别的玩家客户端也能下载到（回环地址他们访问不到）
+        var skinUrl = !string.IsNullOrEmpty(PublicSkinUrl)
+            ? PublicSkinUrl!
+            : $"http://127.0.0.1:{Port}/skins/skin.png?v={_skinStamp}";
         var textures = Model == "slim"
             ? "{\"SKIN\":{\"url\":\"" + skinUrl + "\",\"metadata\":{\"model\":\"slim\"}}}"
             : "{\"SKIN\":{\"url\":\"" + skinUrl + "\"}}";
