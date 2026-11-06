@@ -1383,7 +1383,10 @@ public partial class MainWindow
     /// <summary>把文件下载到对应资源目录（mods/resourcepacks/…），带下载管理器进度，返回保存路径。</summary>
     private async Task<string> DownloadFileToLibraryAsync(string displayName, string url, string fileName)
     {
-        var dir = Path.Combine(_gameDirectory, DlSubDir(_dlType));
+        // 模组跟着当前版本走：整合包 / 版本隔离时落在 versions/<id>/mods
+        var dir = DlSubDir(_dlType) == "mods"
+            ? ModsDirFor(CurrentVersionId())
+            : Path.Combine(_gameDirectory, DlSubDir(_dlType));
         Directory.CreateDirectory(dir);
         var dest = Path.Combine(dir, fileName);
         var dl = DownloadManagerService.Instance.Add(displayName, DownloadKind.Mod);

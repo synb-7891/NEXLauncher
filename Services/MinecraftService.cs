@@ -256,7 +256,12 @@ public sealed class MinecraftService
         // 版本隔离：把游戏工作目录指到 versions/<id>（PCL2 同款）。
         // CmlLib 只按 MinecraftPath 解析 assets/libraries/versions，不会传 --gameDir，
         // 所以必须自己加 --gameDir，否则游戏永远读根目录 mods —— 模组页和游戏看到的目录对不上。
-        if (settings.VersionIsolation && !string.IsNullOrWhiteSpace(versionId))
+        // 整合包版本（versions/<id>/.nex-modpack）无论全局开关如何都强制隔离：
+        // 它自己的 mods / 存档 / 配置都在版本目录里，绝不能回落到根目录。
+        var isolatedLaunch = !string.IsNullOrWhiteSpace(versionId)
+                             && (settings.VersionIsolation
+                                 || Services.ModpackService.IsModpackVersion(gameDirectory, versionId));
+        if (isolatedLaunch)
         {
             var isoDir = Path.Combine(gameDirectory, "versions", versionId);
             Directory.CreateDirectory(isoDir);
@@ -381,7 +386,7 @@ public sealed class MinecraftService
             SafeDispose(buildLauncher);
         }
         // 隔离模式下把进程工作目录也切到版本目录（日志、崩溃报告跟随 --gameDir）
-        if (settings.VersionIsolation)
+        if (settings.VersionIsolation || Services.ModpackService.IsModpackVersion(_gameDirectory, versionId))
             process.StartInfo.WorkingDirectory = Path.Combine(_gameDirectory, "versions", versionId);
         process.EnableRaisingEvents = true;
         PlaytimeStatsService.Instance.AttachProcess(versionId, process);

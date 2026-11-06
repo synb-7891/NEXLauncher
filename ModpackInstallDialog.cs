@@ -17,7 +17,7 @@ public sealed class ModpackInstallDialog : Window
     private readonly bool _allowDownload;
 
     private readonly ComboBox _baseBox = new();
-    private readonly CheckBox _backupBox = new();
+    private readonly TextBox _nameBox = new();
     private readonly CheckBox _autoBaseBox = new();
     private readonly TextBlock _status = new();
     private readonly ProgressBar _progress = new();
@@ -76,20 +76,29 @@ public sealed class ModpackInstallDialog : Window
         AddInfo(grid, 1, 1, "覆盖文件（overrides）", $"{info.OverrideEntries} 个");
         root.Children.Add(grid);
 
-        // 目标目录
-        root.Children.Add(SectionLabel("安装到"));
+        // 新版本名（整合包会做成一独立版本，这个名字会出现在版本列表里）
+        root.Children.Add(SectionLabel("新版本名称（整合包会作为独立版本出现，不动你现有的 mods / 配置）"));
+        _nameBox.Text = string.IsNullOrWhiteSpace(info.Version) ? info.Name : $"{info.Name} {info.Version}";
+        _nameBox.FontSize = 12;
+        _nameBox.Height = 32;
+        _nameBox.Padding = new Thickness(10, 0, 10, 0);
+        _nameBox.VerticalContentAlignment = VerticalAlignment.Center;
+        _nameBox.Background = UiBrush(UiPalette.Bg);
+        _nameBox.Foreground = UiBrush(UiPalette.Text);
+        _nameBox.BorderBrush = UiBrush(UiPalette.Border);
+        root.Children.Add(_nameBox);
         root.Children.Add(new TextBlock
         {
-            Text = gameDir,
+            Text = $"将创建：versions\\{SafePreview(_nameBox.Text)}\\ （mods、config、资源包都在这个目录里）",
             FontSize = 11,
             FontFamily = new FontFamily("Consolas"),
             Foreground = UiBrush(UiPalette.TextDim),
             TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 2, 0, 0)
+            Margin = new Thickness(0, 4, 0, 0)
         });
 
         // 基底版本
-        root.Children.Add(SectionLabel("基底游戏版本（选你实际要启动的版本）"));
+        root.Children.Add(SectionLabel("基底游戏版本（新版本从这里继承库与加载器）"));
         _baseBox.FontSize = 12;
         _baseBox.Height = 32;
         _baseBox.Background = UiBrush(UiPalette.Bg);
@@ -102,13 +111,6 @@ public sealed class ModpackInstallDialog : Window
         root.Children.Add(_baseBox);
 
         // 选项
-        _backupBox.Content = "安装前备份现有 mods 文件夹（推荐，避免与旧模组混在一起）";
-        _backupBox.IsChecked = true;
-        _backupBox.FontSize = 12;
-        _backupBox.Foreground = UiBrush(UiPalette.TextDim);
-        _backupBox.Margin = new Thickness(0, 14, 0, 0);
-        root.Children.Add(_backupBox);
-
         if (_allowDownload)
         {
             _autoBaseBox.Content = string.IsNullOrEmpty(info.McVersion)
@@ -197,6 +199,15 @@ public sealed class ModpackInstallDialog : Window
 
     private string PickDefault(IReadOnlyList<string> installed)
     {
+        // 整合包声明了加载器时，优先选「已经带这个加载器」的版本：
+        // 选成纯原版会让整合包里的模组全部不生效。
+        if (!string.IsNullOrEmpty(_info.McVersion) && !string.IsNullOrEmpty(_info.LoaderId))
+        {
+            var withLoader = installed.FirstOrDefault(v =>
+                v.Contains(_info.LoaderId, StringComparison.OrdinalIgnoreCase)
+                && v.Contains(_info.McVersion, StringComparison.OrdinalIgnoreCase));
+            if (withLoader != null) return withLoader;
+        }
         if (!string.IsNullOrEmpty(_info.McVersion))
         {
             var exact = installed.FirstOrDefault(v => v.Equals(_info.McVersion, StringComparison.OrdinalIgnoreCase));
@@ -250,24 +261,45 @@ public sealed class ModpackInstallDialog : Window
 
         try
         {
-            // 1) 基底版本（完整版可在缺少时自动下载安装）
+            // 1) 基底版本
             var baseVersion = _baseBox.SelectedItem as string;
-            var needBase = string.IsNullOrEmpty(baseVersion) || baseVersion == "（不指定）"
-                           || (!string.IsNullOrEmpty(_info.McVersion)
-                               && !string.Equals(baseVersion, _info.McVersion, StringComparison.OrdinalIgnoreCase)
-                               && !baseVersion.Contains(_info.McVersion, StringComparison.OrdinalIgnoreCase));
+            var noBase = string.IsNullOrEmpty(baseVersion) || baseVersion == "（不指定）";
 
-            if (needBase && _allowDownload && _autoBaseBox.IsChecked == true && _ensureBaseAsync != null
-                && !string.IsNullOrEmpty(_info.McVersion))
+            // 整合包声明了加载器（Fabric/Forge/NeoForge/Quilt）：基底必须带同一个加载器，
+            // 否则整合包的模组一个都不会加载。缺就装（完整版自动下载）。
+            if (!string.IsNullOrEmpty(_info.LoaderId) && !string.IsNullOrEmpty(_info.McVersion)
+                && (noBase || !baseVersion!.Contains(_info.LoaderId, StringComparison.OrdinalIgnoreCase)))
             {
-                _status.Text = "正在准备游戏版本（可能需要下载）…";
-                var resolved = await _ensureBaseAsync(_info.McVersion, _info.LoaderId, _info.LoaderVersion);
-                if (!string.IsNullOrEmpty(resolved)) baseVersion = resolved;
+                if (_allowDownload && _autoBaseBox.IsChecked == true && _ensureBaseAsync != null)
+                {
+                    _status.Text = $"正在准备 {_info.McVersion} + {_info.LoaderId} 基底版本（可能需要下载）…";
+                    var resolved = await _ensureBaseAsync(_info.McVersion, _info.LoaderId, _info.LoaderVersion);
+                    if (!string.IsNullOrEmpty(resolved)) baseVersion = resolved;
+                }
+                else
+                {
+                    _status.Text = $"注意：当前选的基底不是 {_info.LoaderId} 版本，整合包里的模组可能不会加载。";
+                }
+            }
+            else
+            {
+                var needBase = noBase
+                               || (!string.IsNullOrEmpty(_info.McVersion)
+                                   && !string.Equals(baseVersion, _info.McVersion, StringComparison.OrdinalIgnoreCase)
+                                   && !baseVersion!.Contains(_info.McVersion, StringComparison.OrdinalIgnoreCase));
+
+                if (needBase && _allowDownload && _autoBaseBox.IsChecked == true && _ensureBaseAsync != null
+                    && !string.IsNullOrEmpty(_info.McVersion))
+                {
+                    _status.Text = "正在准备游戏版本（可能需要下载）…";
+                    var resolved = await _ensureBaseAsync(_info.McVersion, _info.LoaderId, _info.LoaderVersion);
+                    if (!string.IsNullOrEmpty(resolved)) baseVersion = resolved;
+                }
             }
 
-            // 2) 安装
-            var record = await ModpackService.InstallAsync(_info, _gameDir, _backupBox.IsChecked == true,
-                progress, _cts.Token);
+            // 2) 安装：在 versions/ 下建独立版本，内容全放进去
+            var record = await ModpackService.InstallAsync(_info, _gameDir, baseVersion,
+                _nameBox.Text, progress, _cts.Token);
 
             Result = record;
             _status.Text = "安装完成。";
@@ -278,10 +310,12 @@ public sealed class ModpackInstallDialog : Window
 
             MessageBox.Show(this,
                 $"整合包「{record.Name}」安装完成。\n\n"
+                + $"新版本：{record.VersionId}\n"
+                + $"位置：versions\\{record.VersionId}\\\n"
                 + $"安装文件：{record.Files.Count} 个\n"
-                + $"基底版本：{(string.IsNullOrEmpty(baseVersion) || baseVersion == "（不指定）" ? "未指定" : baseVersion)}\n"
-                + (record.BackupDir != null ? $"原 mods 已备份到：\n{record.BackupDir}\n" : "")
-                + "\n现在可以到「游戏版本」页启动对应版本开始玩。",
+                + $"基底版本：{(string.IsNullOrEmpty(baseVersion) || baseVersion == "（不指定）" ? "未指定" : baseVersion)}\n\n"
+                + "到「游戏版本」页选中这个新版本点启动即可开玩；\n"
+                + "它有自己的 mods / 存档 / 配置，和你原来的版本互不影响。",
                 "NEX", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (OperationCanceledException)
@@ -300,6 +334,19 @@ public sealed class ModpackInstallDialog : Window
             _cancelBtn.Content = "关闭";
             _progress.Visibility = Visibility.Visible;
         }
+    }
+
+    /// <summary>按整合包服务的规则预览版本目录名（只用于界面提示）。</summary>
+    private static string SafePreview(string name)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var c in name ?? "")
+        {
+            if (char.IsLetterOrDigit(c) || c is '-' or '_' or '.') sb.Append(c);
+            else if (c is ' ' or '/') sb.Append('-');
+        }
+        var outp = System.Text.RegularExpressions.Regex.Replace(sb.ToString(), "-{2,}", "-").Trim('-', '.');
+        return string.IsNullOrWhiteSpace(outp) ? "整合包" : outp;
     }
 
     private static string FormatName(string format) => format switch

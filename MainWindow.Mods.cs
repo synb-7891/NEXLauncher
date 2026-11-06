@@ -20,10 +20,12 @@ public partial class MainWindow
     private TextBlock? _modsStatusText;
     private ComboBox? _modsVersionBox;
 
-    /// <summary>版本隔离时 mods 在 versions/&lt;id&gt;/mods，否则在根目录 mods。</summary>
+    /// <summary>版本隔离时 mods 在 versions/&lt;id&gt;/mods，否则在根目录 mods；整合包版本一律隔离。</summary>
     private string ModsDirFor(string versionId)
     {
         var isolated = Path.Combine(_gameDirectory, "versions", versionId, "mods");
+        // 整合包是独立版本实例，mods 只认它自己的目录
+        if (ModpackService.IsModpackVersion(_gameDirectory, versionId)) return isolated;
         if (!_settings.VersionIsolation) return Path.Combine(_gameDirectory, "mods");
         // 隔离目录不存在但根目录有 mods：沿用根目录，避免用户看不到已有模组
         if (!Directory.Exists(isolated) && Directory.Exists(Path.Combine(_gameDirectory, "mods"))

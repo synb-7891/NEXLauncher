@@ -46,7 +46,9 @@ public sealed class ModpackManagerWindow : Window
         });
         head.Children.Add(new TextBlock
         {
-            Text = "支持 Modrinth（.mrpack）与 CurseForge（.zip）整合包；安装时会把模组、配置、资源包写入游戏目录，并在 nex-modpacks 下留记录，方便一键卸载。",
+            Text = "支持 Modrinth（.mrpack）与 CurseForge（.zip）整合包。安装时会新建一个独立游戏版本"
+                 + "（versions\\<整合包名>\\），模组、配置、资源包、存档都在这一个版本目录里，"
+                 + "不会和你现有的版本混在一起；装完在「游戏版本」页选中它即可开玩。",
             FontSize = 12,
             Foreground = B(UiPalette.Muted),
             TextWrapping = TextWrapping.Wrap,
@@ -274,6 +276,7 @@ public sealed class ModpackManagerWindow : Window
         if (!string.IsNullOrEmpty(rec.LoaderId)) meta.Add(rec.LoaderId + (string.IsNullOrEmpty(rec.LoaderVersion) ? "" : " " + rec.LoaderVersion));
         meta.Add($"文件 {rec.Files.Count} 个");
         meta.Add("安装于 " + rec.InstalledAt);
+        if (!string.IsNullOrEmpty(rec.VersionId)) meta.Add("独立版本 " + rec.VersionId);
         if (!string.IsNullOrEmpty(rec.BackupDir)) meta.Add("原 mods 已备份");
 
         info.Children.Add(new TextBlock
@@ -315,6 +318,32 @@ public sealed class ModpackManagerWindow : Window
         uninstallBtn.Click += (_, _) => Uninstall(rec);
         btnCol.Children.Add(uninstallBtn);
 
+        if (!string.IsNullOrEmpty(rec.VersionId))
+        {
+            var openBtn = new Button
+            {
+                Content = "打开目录",
+                Padding = new Thickness(14, 6, 14, 6),
+                Margin = new Thickness(0, 6, 0, 0),
+                Background = B(UiPalette.SurfaceAlt),
+                Foreground = B(UiPalette.TextDim),
+                BorderThickness = new Thickness(0),
+                Cursor = System.Windows.Input.Cursors.Hand,
+                FontSize = 12
+            };
+            openBtn.Click += (_, _) =>
+            {
+                try
+                {
+                    var dir = Path.Combine(_gameDir, "versions", rec.VersionId!);
+                    if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                    System.Diagnostics.Process.Start("explorer.exe", dir);
+                }
+                catch { }
+            };
+            btnCol.Children.Add(openBtn);
+        }
+
         Grid.SetColumn(btnCol, 1);
         grid.Children.Add(btnCol);
 
@@ -325,13 +354,16 @@ public sealed class ModpackManagerWindow : Window
     private void Uninstall(ModpackRecord rec)
     {
         var hasBackup = !string.IsNullOrEmpty(rec.BackupDir) && Directory.Exists(rec.BackupDir);
-        var msg = $"确定要卸载整合包「{rec.Name}」吗？\n\n"
-                  + $"将删除本次安装写入游戏目录的 {rec.Files.Count} 个文件（模组、配置等），"
-                  + $"并移除安装记录。\n\n"
-                  + (hasBackup
-                      ? $"安装前备份的 mods 文件夹还在：\n{rec.BackupDir}\n卸载后可以还原它。\n\n"
-                      : "")
-                  + "此操作不可撤销（不会删除你的存档、游戏版本和资源包以外的个人文件）。";
+        var msg = string.IsNullOrEmpty(rec.VersionId)
+            ? $"确定要卸载整合包「{rec.Name}」吗？\n\n"
+              + $"将删除本次安装写入游戏目录的 {rec.Files.Count} 个文件（模组、配置等），并移除安装记录。\n\n"
+              + (hasBackup ? $"安装前备份的 mods 文件夹还在：\n{rec.BackupDir}\n卸载后可以还原它。\n\n" : "")
+              + "此操作不可撤销（不会删除你的存档、游戏版本和资源包以外的个人文件）。"
+            : $"确定要卸载整合包「{rec.Name}」吗？\n\n"
+              + $"它安装成了一个独立版本：versions\\{rec.VersionId}\\\n"
+              + $"卸载会把这整个版本目录删掉（{rec.Files.Count} 个文件，含该版本的存档与配置），"
+              + "然后移除安装记录。\n\n"
+              + "其他版本和你根目录的 mods 完全不受影响。此操作不可撤销。";
 
         if (MessageBox.Show(this, msg, "卸载整合包", MessageBoxButton.YesNo, MessageBoxImage.Warning)
             != MessageBoxResult.Yes) return;

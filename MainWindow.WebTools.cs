@@ -737,7 +737,9 @@ public partial class MainWindow
             var saved = new List<string>();
             foreach (var f in files)
             {
-                var dir = Path.Combine(_gameDirectory, DlSubDir(pick.Kind));
+                var dir = pick.Kind == "mod"
+                    ? ModsDirFor(CurrentVersionId())
+                    : Path.Combine(_gameDirectory, DlSubDir(pick.Kind));
                 Directory.CreateDirectory(dir);
                 var dest = Path.Combine(dir, f.FileName);
                 if (File.Exists(dest) && new FileInfo(dest).Length > 0)

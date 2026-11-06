@@ -157,7 +157,7 @@ public partial class MainWindow
         var answer = MessageBox.Show(this,
             $"整合包已保存到：\n{path}\n\n"
             + "是否现在安装？\n"
-            + "· 是：打开安装向导，自动下载模组并写入游戏目录\n"
+            + "· 是：打开安装向导，装成一个独立游戏版本（不影响现有版本）\n"
             + "· 否：查看手动放入游戏的方法\n"
             + "· 取消：稍后再处理（文件已保留）",
             "安装整合包", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
@@ -170,11 +170,10 @@ public partial class MainWindow
         if (answer == MessageBoxResult.No)
         {
             var manual = MessageBox.Show(this,
-                "手动放入游戏的方法（两种任选）：\n\n"
-                + "① 推荐：打开「游戏版本」页右上角「整合包」→「安装整合包…」，选中这个文件即可一键安装。\n\n"
-                + "② 纯手动：用压缩软件把整合包里的 overrides（或 client-overrides）文件夹内容\n"
-                + $"    解压覆盖到游戏目录：\n{_gameDirectory}\n"
-                + "    再把 modrinth.index.json 里 files 列出的模组逐个下到 mods 文件夹。\n\n"
+                "手动放入游戏的方法：\n\n"
+                + "推荐用安装向导：「游戏版本」页右上角「整合包」→「安装整合包…」，选中这个文件即可一键装成一个独立版本。\n\n"
+                + "纯手动的话：新建 versions\\<整合包名>\\ 目录，把 overrides（或 client-overrides）里的内容解压进去，"
+                + "再把 modrinth.index.json 里 files 列出的模组下到该目录的 mods 文件夹。\n\n"
                 + "是否打开整合包所在文件夹？",
                 "手动安装整合包", MessageBoxButton.YesNo, MessageBoxImage.Information);
             if (manual == MessageBoxResult.Yes)
