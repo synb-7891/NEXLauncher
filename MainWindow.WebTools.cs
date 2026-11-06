@@ -1033,25 +1033,39 @@ public partial class MainWindow
             }
             if (!cslReady) return "";
 
-            // 2) 皮肤落到 CSL 的 LocalSkin（按玩家名命名），并清掉 CSL 缓存保证换图立即生效
+            // 2) 皮肤落到 CSL 的 LocalSkin/skins（按玩家名命名），并清掉 CSL 缓存保证换图立即生效
+            //    注意 CSL Legacy 加载器的默认根是 LocalSkin/skins/{USERNAME}.png（带 skins 子目录）
             var cslDirs = new[] { Path.Combine(_gameDirectory, "CustomSkinLoader"),
                                   Path.Combine(verDir, "CustomSkinLoader") };
             foreach (var cslDir in cslDirs)
             {
                 var local = Path.Combine(cslDir, "LocalSkin");
-                Directory.CreateDirectory(local);
-                File.Copy(skinPath, Path.Combine(local, $"{name}.png"), true);
-                var cacheDir = Path.Combine(cslDir, "Cache");
-                if (Directory.Exists(cacheDir)) { try { Directory.Delete(cacheDir, true); } catch { } }
+                Directory.CreateDirectory(Path.Combine(local, "skins"));
+                Directory.CreateDirectory(Path.Combine(local, "capes"));
+                Directory.CreateDirectory(Path.Combine(local, "elytras"));
+                File.Copy(skinPath, Path.Combine(local, "skins", $"{name}.png"), true);
+                // 清掉历史上误放到 LocalSkin 根目录的皮肤
+                var legacy = Path.Combine(local, $"{name}.png");
+                if (File.Exists(legacy)) { try { File.Delete(legacy); } catch { } }
+                foreach (var c in new[] { "caches", "ProfileCache", "Cache" })
+                {
+                    var cd = Path.Combine(cslDir, c);
+                    if (Directory.Exists(cd)) { try { Directory.Delete(cd, true); } catch { } }
+                }
             }
 
-            // 3) 配置：LocalSkin 置顶（用户已有配置则不覆盖）
+            // 3) 配置：LocalSkin 置顶。skin 必须带 {USERNAME} 占位符——
+            //    CSL Legacy 加载器把 skin 当文件路径用，没有占位符就会拿目录名当文件找，永远找不到皮肤
             var cfg = new
             {
-                enable = true,
+                version = "15.1",
+                buildNumber = 41,
                 loadlist = new object[]
                 {
-                    new { name = "LocalSkin", type = "Legacy", skin = "LocalSkin", checkPNG = false, model = "auto" },
+                    new { name = "LocalSkin", type = "Legacy", checkPNG = false, model = "auto",
+                          skin = "LocalSkin/skins/{USERNAME}.png",
+                          cape = "LocalSkin/capes/{USERNAME}.png",
+                          elytra = "LocalSkin/elytras/{USERNAME}.png" },
                     new { name = "Mojang", type = "MojangAPI" }
                 },
                 enableDynamicSkull = true,
@@ -1066,7 +1080,28 @@ public partial class MainWindow
             foreach (var cslDir in cslDirs)
             {
                 var p = Path.Combine(cslDir, "CustomSkinLoader.json");
-                if (!File.Exists(p)) await File.WriteAllTextAsync(p, cfgJson);
+                var needWrite = true;
+                if (File.Exists(p))
+                {
+                    // 已有配置且 LocalSkin 条目已带 {USERNAME} 占位符才保留（尊重用户自定义），
+                    // 否则视为旧版启动器写坏的配置，覆盖
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(File.ReadAllText(p));
+                        if (doc.RootElement.TryGetProperty("loadlist", out var ll) && ll.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var e in ll.EnumerateArray())
+                            {
+                                var isLocal = e.TryGetProperty("name", out var n) && n.GetString() == "LocalSkin";
+                                var hasPh = e.TryGetProperty("skin", out var s) &&
+                                            (s.GetString()?.Contains("{USERNAME}") ?? false);
+                                if (isLocal && hasPh) { needWrite = false; break; }
+                            }
+                        }
+                    }
+                    catch { needWrite = true; }
+                }
+                if (needWrite) await File.WriteAllTextAsync(p, cfgJson);
             }
             return "；已装 CustomSkinLoader，服务器里的皮肤也会用这套";
         }
