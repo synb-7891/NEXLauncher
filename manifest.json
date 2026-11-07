@@ -1,6 +1,6 @@
 {
-  "version": "4.0.11",
-  "url": "https://github.com/synb-7891/NEXLauncher/releases/download/v4.0.11/NEXLauncher-4.0.11-update.zip",
-  "notes": "v4.0.11：打通自动更新。\n- 更新器兼容单文件 exe（以前只认 dll，点更新会报「更新包内容不完整」）\n- 覆盖前检查写入权限，并等进程真正退出再覆盖（最多 30 秒）\n- 侧栏版本号改为跟随程序版本，不再显示 v0.4.0 / v4.0.5\n覆盖安装，游戏目录、账号、整合包与设置全部保留。",
+  "version": "4.0.12",
+  "url": "https://github.com/synb-7891/NEXLauncher/releases/download/v4.0.12/NEXLauncher-4.0.12-update.zip",
+  "notes": "v4.0.12：自动更新改为静默执行。\n- 后台悄悄下载新版本，关闭启动器时静默覆盖安装，下次打开即新版（不再弹窗询问）\n- 新增单实例保护：重复双击只把已有窗口拉到前台，不再开第二个进程\n- 修复更新时中文路径乱码导致 robocopy 失败（安装脚本改为纯 ASCII + 环境变量传路径）\n- 修复无控制台时 timeout 立即返回、抢在进程退出前覆盖的问题\n覆盖安装，游戏目录、账号、整合包与设置全部保留。",
   "publishedAt": "2026-11-07"
 }

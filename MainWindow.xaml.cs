@@ -5461,23 +5461,37 @@ public partial class MainWindow : Window
     #region 更新
     private readonly UpdateService _updateService = new();
 
-    /// <summary>启动时静默检查更新：发现新版本弹窗询问，可选择不更新。</summary>
+    /// <summary>
+    /// 启动时静默检查更新：后台悄悄下载好，关闭启动器时静默装上（下次打开即新版），
+    /// 全程不弹窗、不打断。只有程序目录不可写（装在 Program Files / 只读盘）时
+    /// 才退回原来的「询问后安装」，否则静默覆盖必然失败。
+    /// </summary>
     private async Task CheckUpdateOnStartupAsync()
     {
         if (!_settings.AutoCheckUpdate || string.IsNullOrWhiteSpace(_settings.UpdateManifestUrl))
             return;
         try
         {
+            // 等界面和 WebView2 首帧跑完再查，不跟启动抢网络和磁盘
+            await Task.Delay(TimeSpan.FromSeconds(8));
             var info = await _updateService.CheckForUpdateAsync(_settings.UpdateManifestUrl);
             if (info == null) return;
-            var msg = $"发现新版本 v{info.Version}（当前 v{AppInfo.Version}）";
-            if (!string.IsNullOrWhiteSpace(info.Notes)) msg += $"\n\n{info.Notes}";
-            msg += "\n\n是否立即下载并安装？";
-            if (MessageBox.Show(msg, "启动器更新", MessageBoxButton.YesNo, MessageBoxImage.Information) != MessageBoxResult.Yes)
+
+            if (!UpdateService.CanWriteAppDir())
+            {
+                var tip = $"发现新版本 v{info.Version}（当前 v{AppInfo.Version}）";
+                if (!string.IsNullOrWhiteSpace(info.Notes)) tip += $"\n\n{info.Notes}";
+                tip += "\n\n是否立即下载并安装？";
+                if (MessageBox.Show(tip, "启动器更新", MessageBoxButton.YesNo, MessageBoxImage.Information) == MessageBoxResult.Yes)
+                    await DownloadAndApplyUpdateAsync(info);
                 return;
-            await DownloadAndApplyUpdateAsync(info);
+            }
+
+            // 静默下载 → 收进待安装目录，等关闭时静默覆盖
+            var zip = await _updateService.DownloadAsync(info, null);
+            UpdateService.StagePending(info, zip);
         }
-        catch { /* 启动时检查失败不打扰用户 */ }
+        catch { /* 后台更新失败不打扰用户，下次启动自动重试 */ }
     }
 
     /// <summary>下载更新包（带进度窗口）并应用，应用后自动重启。</summary>

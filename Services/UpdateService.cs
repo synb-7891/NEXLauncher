@@ -31,6 +31,9 @@ public sealed record UpdateInfo(string Version, string Url, string Notes, string
     public string ZipFileName => $"NEXLauncher-{Version}.zip";
 }
 
+/// <summary>已经下载好、等着装上的一份更新包。</summary>
+public sealed record PendingUpdate(string Version, string ZipPath, int Attempts);
+
 /// <summary>
 /// 启动器自动更新：从更新源（一个公开可访问的 manifest.json）检查新版本，
 /// 下载 zip 更新包并用外部脚本在退出后覆盖程序目录。
@@ -134,10 +137,132 @@ public sealed class UpdateService
         return dirs.FirstOrDefault(HasExe) ?? dirs.FirstOrDefault(HasDll);
     }
 
+    // ---------------- 静默自动更新：待安装包 ----------------
+
+    /// <summary>本次已启动过安装脚本（避免退出时重复触发）。</summary>
+    public static bool IsApplyingUpdate { get; private set; }
+
+    private static string PendingDir => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "NEXLauncher", "update");
+    private static string PendingZipPath => Path.Combine(PendingDir, "update.zip");
+    private static string PendingMetaPath => Path.Combine(PendingDir, "pending.json");
+
+    /// <summary>程序目录是否可写：放在 Program Files / 只读盘时没法静默覆盖。</summary>
+    public static bool CanWriteAppDir()
+    {
+        try
+        {
+            var probe = Path.Combine(AppContext.BaseDirectory, ".nex-update-probe");
+            File.WriteAllText(probe, "1");
+            File.Delete(probe);
+            return true;
+        }
+        catch { return false; }
+    }
+
+    /// <summary>更新日志：%LocalAppData%\NEXLauncher\update.log，排查「为什么没升级」时用。</summary>
+    private static void Log(string message)
+    {
+        try
+        {
+            var dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NEXLauncher");
+            Directory.CreateDirectory(dir);
+            File.AppendAllText(Path.Combine(dir, "update.log"),
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] v{AppInfo.Version} {message}\n");
+        }
+        catch { }
+    }
+
+    public static PendingUpdate? ReadPending()
+    {
+        try
+        {
+            if (!File.Exists(PendingMetaPath) || !File.Exists(PendingZipPath)) return null;
+            using var doc = JsonDocument.Parse(File.ReadAllText(PendingMetaPath));
+            var root = doc.RootElement;
+            var ver = root.TryGetProperty("version", out var v) ? v.GetString() : null;
+            var att = root.TryGetProperty("attempts", out var a) && a.TryGetInt32(out var n) ? n : 0;
+            if (string.IsNullOrWhiteSpace(ver)) return null;
+            return new PendingUpdate(ver, PendingZipPath, att);
+        }
+        catch { return null; }
+    }
+
+    private static void WritePendingMeta(string version, int attempts)
+    {
+        try
+        {
+            Directory.CreateDirectory(PendingDir);
+            File.WriteAllText(PendingMetaPath, JsonSerializer.Serialize(new { version, attempts }));
+        }
+        catch { }
+    }
+
+    /// <summary>把下载好的包收进待安装目录，等启动/关闭时静默装上。</summary>
+    public static void StagePending(UpdateInfo info, string downloadedZip)
+    {
+        try
+        {
+            Directory.CreateDirectory(PendingDir);
+            if (File.Exists(PendingZipPath)) File.Delete(PendingZipPath);
+            File.Move(downloadedZip, PendingZipPath);
+            WritePendingMeta(info.Version, 0);
+            Log($"已静默下载 v{info.Version}，等关闭/下次启动时安装");
+        }
+        catch { }
+    }
+
+    public static void ClearPending()
+    {
+        try { File.Delete(PendingZipPath); } catch { }
+        try { File.Delete(PendingMetaPath); } catch { }
+    }
+
+    /// <summary>
+    /// 有待安装包就静默装上：启动时 restart=true（装完自动重开），退出时 restart=false。
+    /// 同一份包最多试 2 次，避免覆盖失败时每次启动都白折腾，之后丢弃等下次重新下载。
+    /// </summary>
+    public static bool TryApplyPending(bool restart)
+    {
+        if (IsApplyingUpdate) return false;
+        var pending = ReadPending();
+        if (pending is null) return false;
+
+        // 已经是这个版本（上次装成功了）→ 清掉残留
+        if (CompareVersions(pending.Version, AppInfo.Version) <= 0) { ClearPending(); return false; }
+        if (pending.Attempts >= 2) { Log($"v{pending.Version} 安装失败两次，丢弃待安装包"); ClearPending(); return false; }
+        if (!CanWriteAppDir()) { Log("程序目录不可写，跳过静默安装"); return false; }
+
+        try
+        {
+            LaunchInstaller(pending.ZipPath, restart);
+            WritePendingMeta(pending.Version, pending.Attempts + 1);
+            IsApplyingUpdate = true;
+            Log($"开始静默安装 v{pending.Version}（第 {pending.Attempts + 1} 次，(重开={restart})）");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log($"静默安装 v{pending.Version} 失败：{ex.Message}");
+            ClearPending();
+            return false;
+        }
+    }
+
     /// <summary>
     /// 应用更新：解压到临时目录，启动外部脚本（等待本进程退出 → 覆盖程序目录 → 重启启动器），然后关闭当前程序。
     /// </summary>
     public void ApplyUpdate(string zipPath)
+    {
+        LaunchInstaller(zipPath, restart: true);
+        IsApplyingUpdate = true;
+        Application.Current.Shutdown();
+    }
+
+    /// <summary>解压更新包并拉起安装脚本（不关闭当前进程，是否重启由 restart 决定）。</summary>
+    private static void LaunchInstaller(string zipPath, bool restart)
     {
         var extractDir = Path.Combine(Path.GetTempPath(), "NEXLauncher-update-" + Guid.NewGuid().ToString("N")[..8]);
         ZipFile.ExtractToDirectory(zipPath, extractDir, overwriteFiles: true);
@@ -151,43 +276,49 @@ public sealed class UpdateService
 
         // 覆盖前先确认目录可写：放在 Program Files / 只读盘时，直接给出明确提示，
         // 而不是让用户在黑屏重启后发现还是旧版本。
-        try
-        {
-            var probe = Path.Combine(appDir, ".nex-update-probe");
-            File.WriteAllText(probe, "1");
-            File.Delete(probe);
-        }
-        catch
-        {
+        if (!CanWriteAppDir())
             throw new InvalidOperationException(
                 "程序目录不可写，无法自动覆盖：" + appDir.TrimEnd('\\') +
                 "\n请把启动器移到有写入权限的目录（例如桌面或 D 盘），或手动下载新版本覆盖。");
-        }
 
         // 进程退出需要一点时间，旧脚本只等 2 秒，遇到托盘未退干净就会 robocopy 失败。
-        // 这里改成轮询：确认 NEXLauncher.exe 真的不在了再复制，最多等 30 秒。
+        // 这里改成轮询：确认本进程真的不在了再复制，最多等 40 秒。
+        //
+        // 两个坑必须绕开：
+        // 1) 不能用 timeout.exe —— 本进程用 CreateNoWindow 起 cmd，没有控制台时
+        //    timeout 会直接报「不支持输入重定向」并立刻返回，等于没等；改用 ping 延时。
+        // 2) 批处理按系统 ANSI 解码，脚本里一旦出现中文路径（如 C:\Users\吴\...）
+        //    就会乱码、robocopy 报 123。所以脚本保持纯 ASCII，路径全部用环境变量传。
         var script = Path.Combine(Path.GetTempPath(), "NEXLauncher-update-" + Guid.NewGuid().ToString("N")[..6] + ".cmd");
         File.WriteAllText(script,
             "@echo off\r\n" +
             "setlocal\r\n" +
-            "for /L %%i in (1,1,30) do (\r\n" +
-            "  tasklist /FI \"IMAGENAME eq NEXLauncher.exe\" 2>nul | find /I \"NEXLauncher.exe\" >nul || goto copy\r\n" +
-            "  timeout /t 1 /nobreak >nul\r\n" +
+            "for /L %%i in (1,1,40) do (\r\n" +
+            "  tasklist /FI \"PID eq %NEX_UPDATE_PID%\" /NH 2>nul | find /I \"NEXLauncher.exe\" >nul || goto copy\r\n" +
+            "  ping -n 2 127.0.0.1 >nul\r\n" +
             ")\r\n" +
             ":copy\r\n" +
-            "timeout /t 1 /nobreak >nul\r\n" +
-            $"robocopy \"{rootDir}\" \"{appDir.TrimEnd('\\')}\" /E /IS /IT /R:5 /W:1 /NFL /NDL /NJH /NJS >nul\r\n" +
-            $"if exist \"{exePath}\" start \"\" \"{exePath}\"\r\n" +
-            "del \"%~f0\"\r\n");
+            "ping -n 3 127.0.0.1 >nul\r\n" +
+            "robocopy \"%NEX_UPDATE_SRC%\" \"%NEX_UPDATE_DST%\" /E /IS /IT /R:10 /W:1 /NFL /NDL /NJH /NJS >nul\r\n" +
+            "if \"%NEX_UPDATE_RESTART%\"==\"1\" if exist \"%NEX_UPDATE_EXE%\" start \"\" \"%NEX_UPDATE_EXE%\"\r\n" +
+            "rmdir /s /q \"%NEX_UPDATE_TMP%\" 2>nul\r\n" +
+            "del \"%~f0\"\r\n",
+            System.Text.Encoding.ASCII);
 
-        Process.Start(new ProcessStartInfo
+        var psi = new ProcessStartInfo
         {
             FileName = "cmd.exe",
             Arguments = $"/c \"{script}\"",
             UseShellExecute = false,
             CreateNoWindow = true
-        });
-
-        Application.Current.Shutdown();
+        };
+        // 环境变量在 cmd 内部是 Unicode，不受批处理 ANSI 解码影响，中文路径也不会坏
+        psi.Environment["NEX_UPDATE_PID"] = Environment.ProcessId.ToString();
+        psi.Environment["NEX_UPDATE_SRC"] = rootDir;
+        psi.Environment["NEX_UPDATE_DST"] = appDir.TrimEnd('\\');
+        psi.Environment["NEX_UPDATE_EXE"] = exePath;
+        psi.Environment["NEX_UPDATE_TMP"] = extractDir;
+        psi.Environment["NEX_UPDATE_RESTART"] = restart ? "1" : "0";
+        Process.Start(psi);
     }
 }
