@@ -26,6 +26,9 @@ public sealed class MinecraftService
     public event EventHandler<Process>? GameStarted;
     public event EventHandler? GameExited;
 
+    /// <summary>启动链路上的阶段性提示（自动装 Java 等），主窗口可选用展示</summary>
+    public event EventHandler<string>? LaunchStatus;
+
     public MinecraftService(string gameDirectory)
     {
         _gameDirectory = gameDirectory;
@@ -232,8 +235,58 @@ public sealed class MinecraftService
     /// 组装启动参数：内存 / Java / 窗口 / 额外 JVM 参数 / 外置登录 agent / 离线皮肤 agent。
     /// 启动游戏与「导出启动脚本」共用同一份逻辑，保证行为一致。
     /// </summary>
+    /// <summary>
+    /// 启动前确保机器上有这个版本要求的 Java：
+    /// 1.21+ 要 Java 21、1.18~1.20.4 要 Java 17……版本 JSON 的 javaVersion.majorVersion 说了算。
+    /// 沿 inheritsFrom 链找要求 → 本机扫描匹配 → 没有就自动下载 Temurin JRE 装到 NEX 管理目录。
+    /// 整合包/新版本「启动失败」多半卡在这一步，以前只在百宝箱里提供手动安装，用户根本不知道要装。
+    /// </summary>
+    private async Task<string?> EnsureJavaAsync(string versionId, LauncherSettings settings, CancellationToken ct)
+    {
+        var required = GetRequiredJavaMajor(versionId);
+        var svc = new JavaService();
+        var found = svc.Detect(settings.JavaPath);
+
+        if (required == null)
+            return found.FirstOrDefault()?.JavaPath;      // 版本没写要求：用最高版本的 Java
+
+        var match = found.FirstOrDefault(j => j.Major == required)
+                 ?? found.FirstOrDefault(j => j.Major > required)
+                 ?? (required <= 8 ? found.FirstOrDefault() : null);   // 老版本容忍 8
+        if (match != null) return match.JavaPath;
+
+        LaunchStatus?.Invoke(this, $"未检测到 Java {required}，正在自动下载安装（约 50 MB，一次即可）…");
+        var path = await svc.InstallAsync(required.Value, null, ct);
+        LaunchStatus?.Invoke(this, $"Java {required} 安装完成");
+        return path;
+    }
+
+    /// <summary>沿版本 JSON 的 inheritsFrom 链找 javaVersion.majorVersion（整合包→加载器→基底版本）。</summary>
+    private int? GetRequiredJavaMajor(string versionId)
+    {
+        try
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { versionId };
+            var json = Path.Combine(_gameDirectory, "versions", versionId, versionId + ".json");
+            while (File.Exists(json))
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(json));
+                var root = doc.RootElement;
+                if (root.TryGetProperty("javaVersion", out var jv) &&
+                    jv.TryGetProperty("majorVersion", out var mv) &&
+                    mv.TryGetInt32(out var major))
+                    return major;
+                var parent = root.TryGetProperty("inheritsFrom", out var inh) ? inh.GetString() : null;
+                if (string.IsNullOrWhiteSpace(parent) || !seen.Add(parent)) break;
+                json = Path.Combine(_gameDirectory, "versions", parent, parent + ".json");
+            }
+        }
+        catch { /* 解析失败交给默认 Java 选择 */ }
+        return null;
+    }
+
     private static MLaunchOption CreateLaunchOption(string versionId, string gameDirectory,
-        MSession session, LauncherSettings settings, string? extraGameArgs)
+        MSession session, LauncherSettings settings, string? extraGameArgs, string? javaOverride = null)
     {
         var option = new MLaunchOption
         {
@@ -242,7 +295,10 @@ public sealed class MinecraftService
             FullScreen = settings.GameFullScreen,
             GameLauncherName = "NEXLauncher"
         };
-        if (!string.IsNullOrWhiteSpace(settings.JavaPath) && File.Exists(settings.JavaPath))
+        // Java 优先级：启动时自动备好的版本要求 Java > 用户设置 > 交给 CmlLib 默认（PATH）
+        if (!string.IsNullOrWhiteSpace(javaOverride) && File.Exists(javaOverride))
+            option.JavaPath = javaOverride;
+        else if (!string.IsNullOrWhiteSpace(settings.JavaPath) && File.Exists(settings.JavaPath))
             option.JavaPath = settings.JavaPath;
         if (settings.GameWindowWidth > 0 && settings.GameWindowHeight > 0)
         {
@@ -386,7 +442,8 @@ public sealed class MinecraftService
             catch { /* 下载失败不阻塞启动：本次先不带皮肤 */ }
         }
 
-        var option = CreateLaunchOption(versionId, _gameDirectory, session, settings, extraGameArgs);
+        var option = CreateLaunchOption(versionId, _gameDirectory, session, settings, extraGameArgs,
+            await EnsureJavaAsync(versionId, settings, cancellationToken));
 
         Process process;
         MinecraftLauncher? buildLauncher = null;

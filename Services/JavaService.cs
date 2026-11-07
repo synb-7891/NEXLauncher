@@ -244,30 +244,52 @@ public sealed class JavaService
         var zipPath = Path.Combine(Path.GetTempPath(), "nex-" + name);
         progress?.Report($"正在下载 {name}（{size / 1048576.0:0.#} MB）...");
 
-        using (var resp = await Http.GetAsync(link, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
+        // Adoptium 的包实际托管在 GitHub Releases，国内直连很慢：
+        // 先试加速镜像，失败再回落官方直链
+        var candidates = new List<string>();
+        if (link.Contains("github.com", StringComparison.OrdinalIgnoreCase))
         {
-            resp.EnsureSuccessStatusCode();
-            var total = resp.Content.Headers.ContentLength ?? size;
-            await using var src = await resp.Content.ReadAsStreamAsync(cancellationToken);
-            await using var dst = File.Create(zipPath);
-            var buffer = new byte[81920];
-            long read = 0; var lastReport = 0;
-            int n2;
-            while ((n2 = await src.ReadAsync(buffer, cancellationToken)) > 0)
+            candidates.Add("https://gh-proxy.com/" + link);
+            candidates.Add("https://ghproxy.net/" + link);
+        }
+        candidates.Add(link);
+
+        Exception? last = null;
+        var downloaded = false;
+        foreach (var url in candidates)
+        {
+            try
             {
-                await dst.WriteAsync(buffer.AsMemory(0, n2), cancellationToken);
-                read += n2;
-                if (total > 0)
+                using var resp = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                resp.EnsureSuccessStatusCode();
+                var total = resp.Content.Headers.ContentLength ?? size;
+                await using var src = await resp.Content.ReadAsStreamAsync(cancellationToken);
+                await using var dst = File.Create(zipPath);
+                var buffer = new byte[81920];
+                long read = 0; var lastReport = 0;
+                int n2;
+                while ((n2 = await src.ReadAsync(buffer, cancellationToken)) > 0)
                 {
-                    var pct = (int)(read * 100 / total);
-                    if (pct >= lastReport + 5)
+                    await dst.WriteAsync(buffer.AsMemory(0, n2), cancellationToken);
+                    read += n2;
+                    if (total > 0)
                     {
-                        lastReport = pct;
-                        progress?.Report($"正在下载 Java：{pct}%（{read / 1048576.0:0.#} / {total / 1048576.0:0.#} MB）");
+                        var pct = (int)(read * 100 / total);
+                        if (pct >= lastReport + 5)
+                        {
+                            lastReport = pct;
+                            progress?.Report($"正在下载 Java：{pct}%（{read / 1048576.0:0.#} / {total / 1048576.0:0.#} MB）");
+                        }
                     }
                 }
+                downloaded = true;
+                break;
             }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex) { last = ex; try { File.Delete(zipPath); } catch { } }
         }
+        if (!downloaded)
+            throw new InvalidOperationException("Java 下载失败：" + (last?.Message ?? "所有下载源都不可用"));
 
         progress?.Report("正在解压...");
         var extractDir = Path.Combine(ManagedRoot, $"temurin-{major}");
