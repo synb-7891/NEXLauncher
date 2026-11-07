@@ -119,6 +119,22 @@ public sealed class UpdateService
     }
 
     /// <summary>
+    /// 找到更新包里的「程序目录」。
+    /// 单文件发布的包只有一个 NEXLauncher.exe；早期更新器只认 NEXLauncher.dll，
+    /// 所以这里两种都接受，并且优先认 exe（exe 才是真正的程序入口）。
+    /// </summary>
+    private static string? FindUpdateRoot(string extractDir)
+    {
+        static bool HasExe(string d) => File.Exists(Path.Combine(d, "NEXLauncher.exe"));
+        static bool HasDll(string d) => File.Exists(Path.Combine(d, "NEXLauncher.dll"));
+
+        if (HasExe(extractDir) || HasDll(extractDir)) return extractDir;
+
+        var dirs = Directory.EnumerateDirectories(extractDir, "*", SearchOption.AllDirectories).ToList();
+        return dirs.FirstOrDefault(HasExe) ?? dirs.FirstOrDefault(HasDll);
+    }
+
+    /// <summary>
     /// 应用更新：解压到临时目录，启动外部脚本（等待本进程退出 → 覆盖程序目录 → 重启启动器），然后关闭当前程序。
     /// </summary>
     public void ApplyUpdate(string zipPath)
@@ -126,21 +142,42 @@ public sealed class UpdateService
         var extractDir = Path.Combine(Path.GetTempPath(), "NEXLauncher-update-" + Guid.NewGuid().ToString("N")[..8]);
         ZipFile.ExtractToDirectory(zipPath, extractDir, overwriteFiles: true);
 
-        // zip 里可能直接是文件，也可能带一层目录；找到包含 NEXLauncher.dll 的目录
-        var rootDir = Directory
-            .EnumerateDirectories(extractDir, "*", SearchOption.AllDirectories)
-            .FirstOrDefault(d => File.Exists(Path.Combine(d, "NEXLauncher.dll")))
-            ?? (File.Exists(Path.Combine(extractDir, "NEXLauncher.dll")) ? extractDir : null)
-            ?? throw new InvalidDataException("更新包内容不完整（未找到 NEXLauncher.dll）。");
+        var rootDir = FindUpdateRoot(extractDir)
+            ?? throw new InvalidDataException("更新包内容不完整（未找到 NEXLauncher.exe）。");
 
         var appDir = AppContext.BaseDirectory;
+        if (!appDir.EndsWith(Path.DirectorySeparatorChar)) appDir += Path.DirectorySeparatorChar;
         var exePath = Path.Combine(appDir, "NEXLauncher.exe");
-        var script = Path.Combine(Path.GetTempPath(), "NEXLauncher-update.cmd");
+
+        // 覆盖前先确认目录可写：放在 Program Files / 只读盘时，直接给出明确提示，
+        // 而不是让用户在黑屏重启后发现还是旧版本。
+        try
+        {
+            var probe = Path.Combine(appDir, ".nex-update-probe");
+            File.WriteAllText(probe, "1");
+            File.Delete(probe);
+        }
+        catch
+        {
+            throw new InvalidOperationException(
+                "程序目录不可写，无法自动覆盖：" + appDir.TrimEnd('\\') +
+                "\n请把启动器移到有写入权限的目录（例如桌面或 D 盘），或手动下载新版本覆盖。");
+        }
+
+        // 进程退出需要一点时间，旧脚本只等 2 秒，遇到托盘未退干净就会 robocopy 失败。
+        // 这里改成轮询：确认 NEXLauncher.exe 真的不在了再复制，最多等 30 秒。
+        var script = Path.Combine(Path.GetTempPath(), "NEXLauncher-update-" + Guid.NewGuid().ToString("N")[..6] + ".cmd");
         File.WriteAllText(script,
             "@echo off\r\n" +
-            "timeout /t 2 /nobreak >nul\r\n" +
-            $"robocopy \"{rootDir}\" \"{appDir}\" /E /IS /IT /NFL /NDL /NJH /NJS >nul\r\n" +
-            $"start \"\" \"{exePath}\"\r\n" +
+            "setlocal\r\n" +
+            "for /L %%i in (1,1,30) do (\r\n" +
+            "  tasklist /FI \"IMAGENAME eq NEXLauncher.exe\" 2>nul | find /I \"NEXLauncher.exe\" >nul || goto copy\r\n" +
+            "  timeout /t 1 /nobreak >nul\r\n" +
+            ")\r\n" +
+            ":copy\r\n" +
+            "timeout /t 1 /nobreak >nul\r\n" +
+            $"robocopy \"{rootDir}\" \"{appDir.TrimEnd('\\')}\" /E /IS /IT /R:5 /W:1 /NFL /NDL /NJH /NJS >nul\r\n" +
+            $"if exist \"{exePath}\" start \"\" \"{exePath}\"\r\n" +
             "del \"%~f0\"\r\n");
 
         Process.Start(new ProcessStartInfo

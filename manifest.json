@@ -1,6 +1,6 @@
 {
-  "version": "0.4.0",
-  "url": "https://github.com/synb-7891/NEXLauncher/releases/download/v0.4.0/NEXLauncher-0.4.0-full.zip",
-  "notes": "NEX 0.4.0：修复 playit.gg 授权页报错（内置授权窗口）、外置登录、正版头像/皮肤、启动 Already installing；新增版本设置、模组管理、Java 管理、基岩版、百宝箱、正版披风、9 套官方默认皮肤与 3D 皮肤预览增强。完整版解压即用，无需安装 .NET 运行时。",
-  "publishedAt": "2026-11-01"
+  "version": "4.0.11",
+  "url": "https://github.com/synb-7891/NEXLauncher/releases/download/v4.0.11/NEXLauncher-4.0.11-update.zip",
+  "notes": "v4.0.11：打通自动更新。\n- 更新器兼容单文件 exe（以前只认 dll，点更新会报「更新包内容不完整」）\n- 覆盖前检查写入权限，并等进程真正退出再覆盖（最多 30 秒）\n- 侧栏版本号改为跟随程序版本，不再显示 v0.4.0 / v4.0.5\n覆盖安装，游戏目录、账号、整合包与设置全部保留。",
+  "publishedAt": "2026-11-07"
 }
